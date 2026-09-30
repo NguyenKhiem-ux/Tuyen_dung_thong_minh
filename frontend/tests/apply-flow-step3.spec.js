@@ -117,7 +117,15 @@ test("guest login redirect and candidate apply flow use the real backend", async
     insertResume(candidateId(email));
     const successResponse = page.waitForResponse((response) => response.url().includes(`/api/jobs/${job.id}/apply`));
     await page.getByRole("button", { name: "Ứng tuyển ngay" }).click();
-    expect((await successResponse).status()).toBe(200);
+    const appliedResponse = await successResponse;
+    expect(appliedResponse.status()).toBe(200);
+    const result = await appliedResponse.json();
+    expect(result.message).toBe("Applied successfully");
+    expect(result.application_id).toEqual(expect.any(Number));
+    for (const score of ["final_score", "skill_score", "experience_score", "semantic_score", "project_score"])
+      expect(result.match[score]).toEqual(expect.any(Number));
+    expect(result.match.missing_skills).toEqual(expect.any(Array));
+    expect(result.match.explanation).toEqual(expect.any(String));
     await expect(page.getByRole("heading", { name: "Ứng tuyển thành công" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Đã ứng tuyển" })).toBeDisabled();
     await page.getByRole("link", { name: "Xem đơn ứng tuyển" }).click();

@@ -9,11 +9,16 @@ import {
   CheckCircle2,
   Code2,
   FileText,
+  LayoutGrid,
   MapPin,
+  Sparkles,
   Search,
   Send,
+  SlidersHorizontal,
+  TrendingUp,
   Users,
   Wallet,
+  Wifi,
   RefreshCw,
   X,
 } from "lucide-react";
@@ -41,7 +46,7 @@ export function useJobs(q = "", location = "") {
   return { ...state, retry: () => setAttempt((value) => value + 1) };
 }
 
-export function JobSearchBar({ q = "", location = "", locations = [] }) {
+export function JobSearchBar({ q = "", location = "", locations = [], extraParams = {} }) {
   const id = useId();
   return (
     <form
@@ -52,13 +57,14 @@ export function JobSearchBar({ q = "", location = "", locations = [] }) {
         event.preventDefault();
         const params = new URLSearchParams();
         for (const [key, value] of new FormData(event.currentTarget)) if (value.trim()) params.set(key, value.trim());
+        for (const [key, value] of Object.entries(extraParams)) if (value) params.set(key, value);
         navigate(`/jobs${params.size ? `?${params}` : ""}`);
       }}
     >
       <label className="home-search-keyword">
         <Search size={22} aria-hidden="true" />
         <span className="sr-only">Từ khóa việc làm</span>
-        <input name="q" defaultValue={q} placeholder="Vị trí công việc, kỹ năng, tên công ty..." />
+        <input name="q" defaultValue={q} placeholder="Nhập vị trí, kỹ năng, chức danh..." />
       </label>
       <label className="home-search-location">
         <MapPin size={20} aria-hidden="true" />
@@ -221,40 +227,280 @@ export function JobGrid({ jobs, loading, error, retry, compact = false, count = 
   );
 }
 
-export function JobsPage({ search }) {
+function useCandidateJobContext(user) {
+  const [context, setContext] = useState({ appliedIds: new Set(), matches: {} });
+
+  useEffect(() => {
+    let alive = true;
+    if (user?.role !== "candidate") {
+      setContext({ appliedIds: new Set(), matches: {} });
+      return () => {
+        alive = false;
+      };
+    }
+
+    Promise.allSettled([api.myApplications(), api.recommendations(100)]).then(([applications, recommendations]) => {
+      if (!alive) return;
+      const appliedIds = new Set(applications.status === "fulfilled" ? applications.value.map((item) => item.job_id) : []);
+      const matches = Object.fromEntries(
+        recommendations.status === "fulfilled"
+          ? recommendations.value.map((item) => [item.job.id, item])
+          : [],
+      );
+      setContext({ appliedIds, matches });
+    });
+
+    return () => {
+      alive = false;
+    };
+  }, [user?.id, user?.role]);
+
+  return context;
+}
+
+function JobFilters({ location, employment, sort, count, href }) {
+  const filters = [
+    ["", "Tất cả", LayoutGrid],
+    ["Remote", "Remote", Wifi],
+    ["Hà Nội", "Hà Nội", MapPin],
+    ["TP. Hồ Chí Minh", "TP. Hồ Chí Minh", MapPin],
+  ];
+
+  return (
+    <div className="jobs-toolbar">
+      <div className="job-filter-chips" aria-label="Bộ lọc việc làm">
+        {filters.map(([value, label, Icon]) => {
+          const active = value ? location.toLowerCase() === value.toLowerCase() : !location && !employment;
+          return (
+            <Link key={label} className={`job-filter-chip ${active ? "is-active" : ""}`} href={href({ location: value, employment: "" })}>
+              <Icon size={17} aria-hidden="true" />
+              {label}
+            </Link>
+          );
+        })}
+        <Link
+          className={`job-filter-chip ${employment === "full-time" ? "is-active" : ""}`}
+          href={href({ employment: employment === "full-time" ? "" : "full-time" })}
+        >
+          <BriefcaseBusiness size={17} aria-hidden="true" />
+          Full-time
+        </Link>
+      </div>
+      <div className="jobs-result-tools">
+        <span role="status">{count === null ? "Đang tìm việc làm..." : `Tìm thấy ${count} việc làm phù hợp`}</span>
+        <label className="jobs-sort">
+          <SlidersHorizontal size={17} aria-hidden="true" />
+          <span className="sr-only">Sắp xếp việc làm</span>
+          <select value={sort} onChange={(event) => navigate(href({ sort: event.target.value }))}>
+            <option value="newest">Mới nhất</option>
+            <option value="oldest">Cũ nhất</option>
+          </select>
+        </label>
+      </div>
+    </div>
+  );
+}
+
+function JobListItem({ job, user, applied, match }) {
+  const skills = splitSkills(job.skills);
+  const open = job.status === "open";
+  const wrongRole = user && user.role !== "candidate";
+  const matchScore = Number(match?.final_score);
+  let applyLabel = "Ứng tuyển";
+  if (!open) applyLabel = "Đã ngừng tuyển";
+  else if (applied) applyLabel = "Đã ứng tuyển";
+  else if (wrongRole) applyLabel = "Không thể ứng tuyển";
+
+  return (
+    <article className="home-job-card job-list-item">
+      <div className="job-list-primary">
+        <CompanyMark job={job} />
+        <div className="job-list-primary-copy">
+          <h2>
+            <Link className="home-job-detail-link job-list-title" href={`/jobs/${job.id}`}>
+              {job.title}
+            </Link>
+          </h2>
+          <p className="job-list-company">{job.company_name || "Nhà tuyển dụng"}</p>
+          <div className="job-list-meta">
+            <span>
+              <MapPin size={15} aria-hidden="true" />
+              {job.location || "Chưa cập nhật"}
+            </span>
+            <span>
+              <BriefcaseBusiness size={15} aria-hidden="true" />
+              {employmentLabel(job.employment_type)}
+            </span>
+          </div>
+          <p className="job-list-description">{job.description || "Chưa cập nhật mô tả công việc."}</p>
+        </div>
+      </div>
+
+      <div className="job-list-skills">
+        <div className="job-skill-tags">
+          {skills.slice(0, 6).map((skill) => (
+            <span key={skill}>{skill}</span>
+          ))}
+          {skills.length > 6 && <span>+{skills.length - 6}</span>}
+        </div>
+        {job.applicants_count !== undefined && (
+          <span className="job-applicant-count">
+            <Users size={16} aria-hidden="true" />
+            {job.applicants_count} ứng viên đã ứng tuyển
+          </span>
+        )}
+      </div>
+
+      <div className="job-list-stats">
+        {Number.isFinite(matchScore) && (
+          <div className="job-match-row">
+            <span className="job-match-score">
+              <TrendingUp size={16} aria-hidden="true" />
+              {new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 1 }).format(matchScore)}% phù hợp
+            </span>
+            <span className="job-ai-badge">
+              <Sparkles size={15} aria-hidden="true" />
+              Gợi ý bởi AI
+            </span>
+          </div>
+        )}
+        <strong className="job-list-salary">
+          <Wallet size={17} aria-hidden="true" />
+          {job.salary_range || "Thỏa thuận"}
+        </strong>
+        <span className="job-list-experience">
+          <BriefcaseBusiness size={17} aria-hidden="true" />
+          Kinh nghiệm {formatExperience(job.min_experience).toLowerCase()}
+        </span>
+      </div>
+
+      <div className="job-list-actions">
+        {applied || !open || wrongRole ? (
+          <button className="home-button job-list-apply" type="button" disabled>
+            {applyLabel}
+          </button>
+        ) : (
+          <Link className="home-button job-list-apply" href={`/jobs/${job.id}`}>
+            {applyLabel}
+          </Link>
+        )}
+      </div>
+    </article>
+  );
+}
+
+function JobList({ jobs, loading, error, retry, user, appliedIds, matches }) {
+  if (error)
+    return (
+      <div className="jobs-feedback jobs-list-feedback" role="alert">
+        <h2>Không thể tải danh sách việc làm</h2>
+        <p>Vui lòng thử lại sau.</p>
+        <button className="home-button secondary" type="button" onClick={retry}>
+          <RefreshCw size={16} aria-hidden="true" />
+          Thử lại
+        </button>
+      </div>
+    );
+  if (!loading && !jobs.length)
+    return (
+      <div className="jobs-feedback jobs-list-feedback" role="status">
+        <Search size={30} aria-hidden="true" />
+        <h2>Không tìm thấy công việc phù hợp</h2>
+        <p>Thử thay đổi từ khóa hoặc bộ lọc tìm kiếm.</p>
+        <Link className="home-button secondary" href="/jobs">
+          <X size={16} aria-hidden="true" />
+          Xóa bộ lọc
+        </Link>
+      </div>
+    );
+  return (
+    <div className="jobs-list" aria-busy={loading}>
+      {loading ? (
+        <>
+          <span className="sr-only" role="status">
+            Đang tải việc làm...
+          </span>
+          {Array.from({ length: 4 }, (_, index) => (
+            <article key={index} className="home-job-card job-list-item job-skeleton job-list-skeleton" aria-hidden="true">
+              <span />
+              <span />
+              <span />
+              <span />
+            </article>
+          ))}
+        </>
+      ) : (
+        jobs.map((job) => (
+          <JobListItem
+            key={job.id}
+            job={job}
+            user={user}
+            applied={appliedIds.has(job.id)}
+            match={matches[job.id]}
+          />
+        ))
+      )}
+    </div>
+  );
+}
+
+export function JobsPage({ search, user }) {
   const params = new URLSearchParams(search);
   const q = params.get("q") || "";
   const location = params.get("location") || "";
+  const employment = params.get("employment") || "";
+  const sort = params.get("sort") === "oldest" ? "oldest" : "newest";
   const state = useJobs(q, location);
+  const context = useCandidateJobContext(user);
+  const jobs = state.jobs
+    .filter((job) => !employment || job.employment_type?.toLowerCase() === employment)
+    .sort((a, b) => (sort === "oldest" ? 1 : -1) * (new Date(a.created_at) - new Date(b.created_at)));
+
+  function href(changes) {
+    const next = new URLSearchParams(params);
+    for (const [key, value] of Object.entries(changes)) {
+      if (value) next.set(key, value);
+      else next.delete(key);
+    }
+    return `/jobs${next.size ? `?${next}` : ""}`;
+  }
+
   return (
-    <main className="job-browser">
-      <section className="job-search-band">
-        <div className="site-container">
-          <Link className="home-text-link" href="/">
-            <ArrowLeft size={16} />
-            Trang chủ
-          </Link>
-          <h1>Tìm công việc phù hợp</h1>
-          <JobSearchBar key={search} q={q} location={location} locations={state.jobs.map((job) => job.location)} />
-        </div>
-      </section>
-      <section className="site-container public-jobs-results">
-        <div className="home-section-heading">
-          <div>
-            <h2>{q ? `Kết quả cho "${q}"` : "Cơ hội việc làm"}</h2>
-            <p role="status">
-              {state.loading
-                ? "Đang tìm kiếm..."
-                : `${state.jobs.length} việc làm${location ? ` tại ${location}` : " đang tuyển dụng"}`}
+    <main className="job-browser jobs-page">
+      <section className="job-search-band jobs-hero">
+        <div className="site-container jobs-hero-inner">
+          <div className="jobs-hero-copy">
+            <h1>
+              Tìm việc <span>phù hợp với bạn</span>
+            </h1>
+            <p>
+              Khám phá những cơ hội nghề nghiệp phù hợp với kỹ năng, kinh nghiệm và mục tiêu của bạn cùng Smart
+              Recruitment AI.
             </p>
           </div>
-          {(q || location) && (
-            <Link className="home-text-link" href="/jobs">
-              Xóa bộ lọc <X size={15} />
-            </Link>
-          )}
+          <img className="jobs-hero-art" src="/images/home-career.png" alt="" aria-hidden="true" />
         </div>
-        <JobGrid {...state} />
+        <div className="site-container jobs-search-container">
+          <JobSearchBar
+            key={search}
+            q={q}
+            location={location}
+            locations={state.jobs.map((job) => job.location)}
+            extraParams={{ employment, sort: sort === "oldest" ? sort : "" }}
+          />
+        </div>
+      </section>
+      <section className="jobs-results-shell">
+        <div className="site-container public-jobs-results">
+          <JobFilters
+            location={location}
+            employment={employment}
+            sort={sort}
+            count={state.loading ? null : jobs.length}
+            href={href}
+          />
+          <JobList {...state} jobs={jobs} user={user} {...context} />
+        </div>
       </section>
     </main>
   );

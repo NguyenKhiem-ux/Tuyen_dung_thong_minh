@@ -65,13 +65,13 @@ test("guest Home, real job details, search, refresh, history and auth entry poin
   if (featured.length) {
     await expect(page.locator(".home-job-grid").first().locator("h3").first()).toHaveText(featured[0].title);
     await page.locator(".home-job-detail-link").first().click();
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText(featured[0].title);
+    await expect(page.getByRole("heading", { name: featured[0].title })).toBeVisible();
     await page.reload();
-    await expect(page.getByRole("button", { name: "Đăng nhập để ứng tuyển" })).toBeEnabled();
-    await page.getByRole("button", { name: "Đăng nhập để ứng tuyển" }).click();
+    await expect(page.getByRole("button", { name: "Ứng tuyển ngay" })).toBeEnabled();
+    await page.getByRole("button", { name: "Ứng tuyển ngay" }).click();
     await expect(page).toHaveURL(/\/login\?redirect=/);
     await page.goBack();
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText(featured[0].title);
+    await expect(page.getByRole("heading", { name: featured[0].title })).toBeVisible();
   }
   await page.goto("/");
   await page.locator(".popular-searches").getByRole("link", { name: "Data Analyst", exact: true }).click();
@@ -160,12 +160,17 @@ test("candidate application handles missing CV and success without changing the 
     route.fulfill({ status: 400, json: { detail: "Please upload a CV before applying" } }),
   );
   await page.getByRole("button", { name: "Ứng tuyển ngay", exact: true }).click();
-  await expect(page.getByText("Please upload a CV before applying")).toBeVisible();
-  await expect(page.locator(".job-detail-facts").getByRole("link", { name: "CV của tôi" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Bạn chưa có CV" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Tải CV ngay" })).toHaveAttribute("href", "/candidate/resume");
+  await page.getByRole("button", { name: "Để sau" }).click();
   await page.unroute("**/api/jobs/*/apply");
   await page.route("**/api/jobs/*/apply", (route) => route.fulfill({ json: { match: { final_score: 75 } } }));
   await page.getByRole("button", { name: "Ứng tuyển ngay", exact: true }).click();
-  await expect(page.getByText("Ứng tuyển thành công! Điểm phù hợp AI: 75%.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Ứng tuyển thành công" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Xem đơn ứng tuyển" })).toHaveAttribute(
+    "href",
+    "/candidate/applications",
+  );
   await expect(page.getByRole("button", { name: "Đã ứng tuyển", exact: true })).toBeDisabled();
 });
 
