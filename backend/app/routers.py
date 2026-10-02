@@ -154,16 +154,10 @@ def get_job(job_id: int, db: Session = Depends(get_db)):
 
 @api.post("/jobs", response_model=JobOut)
 def create_job(data: JobCreate, db: Session = Depends(get_db), user: User = Depends(require_role("recruiter"))):
-    company_id = data.company_id
-    if company_id is None:
-        company = db.scalar(select(Company).where(Company.recruiter_id == user.id))
-        if not company:
-            company = Company(name=f"{user.full_name} Company", recruiter_id=user.id)
-            db.add(company)
-            db.commit()
-            db.refresh(company)
-        company_id = company.id
-    job = Job(**data.model_dump(exclude={"company_id"}), recruiter_id=user.id, company_id=company_id)
+    company = db.scalar(select(Company).where(Company.recruiter_id == user.id))
+    if not company:
+        raise HTTPException(status_code=409, detail="Vui lòng tạo hồ sơ công ty trước khi đăng tin tuyển dụng.")
+    job = Job(**data.model_dump(), recruiter_id=user.id, company_id=company.id)
     db.add(job)
     db.commit()
     db.refresh(job)

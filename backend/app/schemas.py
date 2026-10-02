@@ -57,7 +57,6 @@ class JobCreate(BaseModel):
     location: str = "Remote"
     employment_type: str = "Full-time"
     salary_range: str = ""
-    company_id: Optional[int] = None
 
 
 class JobUpdate(BaseModel):
