@@ -7,14 +7,17 @@ from sqlalchemy.orm import Session
 from sqlalchemy import select, func, or_
 
 from .database import get_db
-from .models import User, Job, Resume, Application, Company, Interview, Evaluation
+from .models import (
+    User, Job, Resume, Application, ApplicationStatusHistory,
+    Company, Interview, Evaluation,
+)
 from .schemas import (
     RegisterIn, LoginIn, Token, UserOut,
     CompanyIn, CompanyOut,
     JobCreate, JobUpdate, JobOut,
     ResumeOut,
-    ApplicationOut, StatusUpdateIn,
-    InterviewCreate, InterviewOut,
+    ApplicationOut, ApplicationStatusUpdateIn, ApplicationStatusHistoryOut,
+    InterviewCreate, InterviewOut, InterviewStatusUpdateIn,
     EvaluationCreate, EvaluationOut,
     AdminUserUpdate,
 )
@@ -29,7 +32,14 @@ from .config import settings, MAX_UPLOAD_BYTES
 api = APIRouter(prefix="/api")
 os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
 
-VALID_STATUSES = ["applied", "screening", "interview", "offer", "hired", "rejected"]
+APPLICATION_TRANSITIONS = {
+    "applied": {"screening", "rejected"},
+    "screening": {"interview", "rejected"},
+    "interview": {"offer", "rejected"},
+    "offer": {"hired", "rejected"},
+    "hired": set(),
+    "rejected": set(),
+}
 
 
 # =====================================================================
@@ -262,6 +272,37 @@ def _app_out(a: Application) -> dict:
     }
 
 
+def _transition_application(a: Application, new_status: str, user: User, db: Session, reason: str | None = None):
+    old_status = a.status
+    if new_status not in APPLICATION_TRANSITIONS.get(old_status, set()):
+        raise HTTPException(409, f"Không thể chuyển trạng thái từ {old_status} sang {new_status}.")
+    if new_status == "rejected" and not (reason or "").strip():
+        raise HTTPException(400, "Vui lòng nhập lý do từ chối ứng viên.")
+
+    a.status = new_status
+    a.updated_at = datetime.utcnow()
+    db.add(ApplicationStatusHistory(
+        application_id=a.id,
+        old_status=old_status,
+        new_status=new_status,
+        changed_by=user.id,
+        reason=(reason or "").strip() or None,
+    ))
+
+
+def _history_out(item: ApplicationStatusHistory) -> dict:
+    return {
+        "id": item.id,
+        "application_id": item.application_id,
+        "old_status": item.old_status,
+        "new_status": item.new_status,
+        "changed_by": item.changed_by,
+        "changed_by_name": item.changed_by_user.full_name if item.changed_by_user else None,
+        "reason": item.reason,
+        "changed_at": item.changed_at,
+    }
+
+
 @api.post("/jobs/{job_id}/apply")
 def apply(job_id: int, db: Session = Depends(get_db), user: User = Depends(require_role("candidate"))):
     job = db.get(Job, job_id)
@@ -305,17 +346,27 @@ def my_applications(db: Session = Depends(get_db), user: User = Depends(require_
 
 
 @api.patch("/applications/{application_id}/status", response_model=ApplicationOut)
-def update_application_status(application_id: int, data: StatusUpdateIn, db: Session = Depends(get_db), user: User = Depends(require_role("recruiter"))):
-    if data.status not in VALID_STATUSES:
-        raise HTTPException(400, f"Status must be one of {VALID_STATUSES}")
+def update_application_status(application_id: int, data: ApplicationStatusUpdateIn, db: Session = Depends(get_db), user: User = Depends(require_role("recruiter"))):
     a = db.get(Application, application_id)
     if not a or a.job.recruiter_id != user.id:
         raise HTTPException(404, "Application not found")
-    a.status = data.status
-    a.updated_at = datetime.utcnow()
+    _transition_application(a, data.status, user, db, data.reason)
     db.commit()
     db.refresh(a)
     return _app_out(a)
+
+
+@api.get("/applications/{application_id}/history", response_model=list[ApplicationStatusHistoryOut])
+def application_status_history(application_id: int, db: Session = Depends(get_db), user: User = Depends(require_role("recruiter"))):
+    application = db.get(Application, application_id)
+    if not application or application.job.recruiter_id != user.id:
+        raise HTTPException(404, "Application not found")
+    rows = list(db.scalars(
+        select(ApplicationStatusHistory)
+        .where(ApplicationStatusHistory.application_id == application_id)
+        .order_by(ApplicationStatusHistory.changed_at.asc(), ApplicationStatusHistory.id.asc())
+    ))
+    return [_history_out(item) for item in rows]
 
 
 # =====================================================================
@@ -363,12 +414,18 @@ def schedule_interview(data: InterviewCreate, db: Session = Depends(get_db), use
     application = db.get(Application, data.application_id)
     if not application or application.job.recruiter_id != user.id:
         raise HTTPException(404, "Application not found")
+    active_interview = db.scalar(
+        select(Interview).where(Interview.application_id == data.application_id, Interview.status != "cancelled")
+    )
+    if active_interview:
+        raise HTTPException(409, "\u1ee8ng vi\u00ean n\u00e0y \u0111\u00e3 c\u00f3 l\u1ecbch ph\u1ecfng v\u1ea5n.")
     interview = Interview(
         application_id=data.application_id, scheduled_at=data.scheduled_at,
         duration_minutes=data.duration_minutes, mode=data.mode, location=data.location,
         notes=data.notes, created_by=user.id,
     )
-    application.status = "interview"
+    if application.status != "interview":
+        _transition_application(application, "interview", user, db, "Tạo lịch phỏng vấn")
     db.add(interview)
     db.commit()
     db.refresh(interview)
@@ -392,7 +449,7 @@ def my_interviews(db: Session = Depends(get_db), user: User = Depends(current_us
 
 
 @api.patch("/interviews/{interview_id}/status")
-def update_interview_status(interview_id: int, data: StatusUpdateIn, db: Session = Depends(get_db), user: User = Depends(require_role("recruiter"))):
+def update_interview_status(interview_id: int, data: InterviewStatusUpdateIn, db: Session = Depends(get_db), user: User = Depends(require_role("recruiter"))):
     interview = db.get(Interview, interview_id)
     if not interview or interview.created_by != user.id:
         raise HTTPException(404, "Interview not found")

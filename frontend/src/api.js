@@ -87,8 +87,9 @@ export const api = {
   applyToJob: (jobId) => request(`/api/jobs/${jobId}/apply`, { method: "POST" }),
   myApplications: () => request("/api/applications/me"),
   jobApplications: (jobId) => request(`/api/jobs/${jobId}/applications`),
-  updateApplicationStatus: (id, status) =>
-    request(`/api/applications/${id}/status`, { method: "PATCH", body: { status } }),
+  updateApplicationStatus: (id, status, reason = "") =>
+    request(`/api/applications/${id}/status`, { method: "PATCH", body: { status, reason } }),
+  applicationStatusHistory: (id) => request(`/api/applications/${id}/history`),
 
   // recommendations
   recommendations: (limit = 5) => request(`/api/recommendations?limit=${limit}`),

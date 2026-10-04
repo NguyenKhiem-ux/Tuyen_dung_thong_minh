@@ -95,6 +95,26 @@ class Application(Base):
     resume = relationship("Resume")
     interviews = relationship("Interview", back_populates="application", cascade="all, delete-orphan")
     evaluations = relationship("Evaluation", back_populates="application", cascade="all, delete-orphan")
+    status_history = relationship(
+        "ApplicationStatusHistory",
+        back_populates="application",
+        cascade="all, delete-orphan",
+        order_by="ApplicationStatusHistory.changed_at",
+    )
+
+
+class ApplicationStatusHistory(Base):
+    __tablename__ = "application_status_history"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    application_id: Mapped[int] = mapped_column(ForeignKey("applications.id"), index=True)
+    old_status: Mapped[str] = mapped_column(String(30))
+    new_status: Mapped[str] = mapped_column(String(30))
+    changed_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    changed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    application = relationship("Application", back_populates="status_history")
+    changed_by_user = relationship("User")
 
 
 class Interview(Base):

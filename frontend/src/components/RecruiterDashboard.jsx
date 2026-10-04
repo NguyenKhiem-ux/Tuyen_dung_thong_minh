@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
+import { ArrowRight, Eye, X, XCircle } from "lucide-react";
 import api from "../api.js";
-import { Card, Tabs, StatusBadge, StatusSelect, ScoreBar, EmptyState, Alert, Spinner } from "./Common.jsx";
+import { Alert, Card, EmptyState, ScoreBar, Spinner, StatusBadge, STATUS_LABELS, Tabs } from "./Common.jsx";
 
 export default function RecruiterDashboard() {
   const [tab, setTab] = useState("overview");
@@ -15,7 +16,7 @@ export default function RecruiterDashboard() {
           { key: "overview", label: "Thống kê" },
           { key: "company", label: "Công ty" },
           { key: "jobs", label: "Tin tuyển dụng" },
-          { key: "applications", label: "Ứng viên & Xếp hạng AI" },
+          { key: "applications", label: "Ứng viên & ATS" },
           { key: "interviews", label: "Lịch phỏng vấn" },
         ]}
       />
@@ -272,114 +273,366 @@ function JobManager() {
   );
 }
 
+const PIPELINE_COLUMNS = [
+  ["applied", "Đã ứng tuyển"],
+  ["screening", "Sàng lọc"],
+  ["interview", "Phỏng vấn"],
+  ["offer", "Offer"],
+  ["hired", "Đã tuyển"],
+  ["rejected", "Đã từ chối"],
+];
+
+const NEXT_STATUS = {
+  applied: "screening",
+  screening: "interview",
+  interview: "offer",
+  offer: "hired",
+};
+
+const NEXT_ACTION_LABEL = {
+  screening: "Chuyển sang Sàng lọc",
+  interview: "Chuyển sang Phỏng vấn",
+  offer: "Chuyển sang Offer",
+  hired: "Đánh dấu Đã tuyển",
+};
+
 function ApplicationsRanking() {
   const [jobs, setJobs] = useState([]);
   const [selectedJobId, setSelectedJobId] = useState("");
   const [apps, setApps] = useState([]);
+  const [loadingJobs, setLoadingJobs] = useState(true);
+  const [loadingApps, setLoadingApps] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
-  const [interviewForm, setInterviewForm] = useState(null); // application id being scheduled
-  const [evalForm, setEvalForm] = useState(null); // application id being evaluated
+  const [pending, setPending] = useState(null);
+  const [updating, setUpdating] = useState(false);
+  const [details, setDetails] = useState(null);
 
   useEffect(() => {
-    api.myJobs().then((data) => {
-      setJobs(data);
-      if (data.length > 0) setSelectedJobId(String(data[0].id));
-    });
+    api
+      .myJobs()
+      .then((data) => {
+        setJobs(data);
+        if (data.length > 0) setSelectedJobId(String(data[0].id));
+      })
+      .catch((e) => setError(e.message))
+      .finally(() => setLoadingJobs(false));
   }, []);
 
   useEffect(() => {
-    if (!selectedJobId) return;
+    if (!selectedJobId) {
+      setApps([]);
+      return;
+    }
     loadApps();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedJobId]);
 
-  function loadApps() {
-    api
-      .jobApplications(selectedJobId)
-      .then(setApps)
-      .catch((e) => setError(e.message));
-  }
-
-  async function changeStatus(appId, status) {
+  async function loadApps() {
+    setLoadingApps(true);
+    setError("");
     try {
-      await api.updateApplicationStatus(appId, status);
-      loadApps();
+      setApps(await api.jobApplications(selectedJobId));
     } catch (e) {
       setError(e.message);
+    } finally {
+      setLoadingApps(false);
     }
   }
 
+  function requestTransition(application, status) {
+    setError("");
+    setMessage("");
+    setPending({ application, status });
+  }
+
+  async function confirmTransition(reason) {
+    setUpdating(true);
+    setError("");
+    try {
+      await api.updateApplicationStatus(pending.application.id, pending.status, reason);
+      setMessage(`Đã chuyển ${pending.application.candidate_name} sang ${STATUS_LABELS[pending.status]}.`);
+      setPending(null);
+      setDetails(null);
+      await loadApps();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setUpdating(false);
+    }
+  }
+
+  const selectedJob = jobs.find((job) => String(job.id) === selectedJobId);
+
   return (
-    <div>
-      <Card title="Chọn tin tuyển dụng để xem xếp hạng AI">
-        <select value={selectedJobId} onChange={(e) => setSelectedJobId(e.target.value)}>
+    <section className="ats-section">
+      <div className="ats-header">
+        <div>
+          <p className="ats-eyebrow">ATS Pipeline</p>
+          <h2>Ứng viên & Pipeline tuyển dụng</h2>
+          <p>Theo dõi ứng viên theo từng giai đoạn và điểm matching từ backend.</p>
+        </div>
+        <label className="ats-job-picker">
+          <span>Chọn tin tuyển dụng</span>
+          <select
+            aria-label="Chọn tin tuyển dụng"
+            value={selectedJobId}
+            onChange={(e) => setSelectedJobId(e.target.value)}
+            disabled={loadingJobs || jobs.length === 0}
+          >
+            {jobs.length === 0 && <option value="">Chưa có tin tuyển dụng</option>}
           {jobs.map((j) => (
             <option key={j.id} value={j.id}>
               {j.title} ({j.applicants_count} ứng viên)
             </option>
           ))}
-        </select>
-      </Card>
+          </select>
+        </label>
+      </div>
 
       <Alert type="success">{message}</Alert>
       <Alert>{error}</Alert>
 
-      {apps.length === 0 ? (
-        <EmptyState text="Chưa có ứng viên nào cho tin này." />
+      {loadingJobs ? (
+        <Spinner />
+      ) : jobs.length === 0 ? (
+        <EmptyState text="Bạn chưa có tin tuyển dụng để tạo pipeline." />
       ) : (
-        apps.map((a, idx) => (
-          <Card
-            key={a.id}
-            title={`#${idx + 1} ${a.candidate_name}`}
-            subtitle={a.candidate_email}
-            right={<StatusSelect value={a.status} onChange={(s) => changeStatus(a.id, s)} />}
-          >
-            <ScoreBar label="Điểm tổng (AI Ranking)" value={a.final_score} color="#22c55e" />
-            <ScoreBar label="Kỹ năng" value={a.skill_score} />
-            <ScoreBar label="Kinh nghiệm" value={a.experience_score} />
-            <ScoreBar label="Ngữ nghĩa" value={a.semantic_score} />
-            <ScoreBar label="Dự án" value={a.project_score} />
-            {a.missing_skills.length > 0 && (
-              <p className="job-meta missing-skills">
-                <strong>Kỹ năng còn thiếu:</strong> {a.missing_skills.join(", ")}
-              </p>
-            )}
-            <p className="job-meta explanation">{a.explanation}</p>
-
-            <div className="form-actions">
-              <button className="btn-ghost" onClick={() => setInterviewForm(interviewForm === a.id ? null : a.id)}>
-                Lên lịch phỏng vấn
-              </button>
-              <button className="btn-ghost" onClick={() => setEvalForm(evalForm === a.id ? null : a.id)}>
-                Đánh giá ứng viên
-              </button>
-            </div>
-
-            {interviewForm === a.id && (
-              <ScheduleInterviewForm
-                applicationId={a.id}
-                onDone={() => {
-                  setInterviewForm(null);
-                  setMessage("Đã lên lịch phỏng vấn.");
-                  loadApps();
-                }}
-              />
-            )}
-            {evalForm === a.id && (
-              <EvaluateForm
-                applicationId={a.id}
-                onDone={() => {
-                  setEvalForm(null);
-                  setMessage("Đã lưu đánh giá ứng viên.");
-                }}
-              />
-            )}
-          </Card>
-        ))
+        <>
+          {selectedJob && <p className="ats-selected-job">{selectedJob.title}</p>}
+          {loadingApps ? (
+            <Spinner />
+          ) : (
+            <>
+              {apps.length === 0 && <div className="ats-empty-job">Chưa có ứng viên cho tin tuyển dụng này.</div>}
+              <div className="ats-board" aria-label="Pipeline tuyển dụng">
+                {PIPELINE_COLUMNS.map(([status, label]) => {
+                  const candidates = apps
+                    .filter((application) => application.status === status)
+                    .sort((a, b) => Number(b.final_score || 0) - Number(a.final_score || 0));
+                  return (
+                    <section className={`ats-column ats-column-${status}`} key={status}>
+                      <header>
+                        <h3>{label}</h3>
+                        <span>{candidates.length}</span>
+                      </header>
+                      <div className="ats-column-body">
+                        {candidates.length === 0 ? (
+                          <div className="ats-column-empty">Chưa có ứng viên</div>
+                        ) : (
+                          candidates.map((application) => (
+                            <CandidatePipelineCard
+                              key={application.id}
+                              application={application}
+                              onDetails={() => setDetails(application)}
+                              onTransition={(status) => requestTransition(application, status)}
+                            />
+                          ))
+                        )}
+                      </div>
+                    </section>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </>
       )}
+
+      {pending && (
+        <TransitionModal
+          key={`${pending.application.id}-${pending.status}`}
+          application={pending.application}
+          status={pending.status}
+          busy={updating}
+          error={error}
+          onClose={() => !updating && setPending(null)}
+          onConfirm={confirmTransition}
+        />
+      )}
+      {details && <CandidateDetailModal application={details} onClose={() => setDetails(null)} />}
+    </section>
+  );
+}
+
+function CandidatePipelineCard({ application, onDetails, onTransition }) {
+  const nextStatus = NEXT_STATUS[application.status];
+  return (
+    <article className="ats-candidate-card">
+      <div className="ats-candidate-heading">
+        <div>
+          <h4>{application.candidate_name}</h4>
+          <p>{application.job_title}</p>
+        </div>
+        <span className="ats-ai-score">{formatScore(application.final_score)}%</span>
+      </div>
+      <dl className="ats-card-scores">
+        <div><dt>Kỹ năng</dt><dd>{formatScore(application.skill_score)}%</dd></div>
+        <div><dt>Kinh nghiệm</dt><dd>{formatScore(application.experience_score)}%</dd></div>
+      </dl>
+      <p className="ats-applied-date">Ứng tuyển: <strong>{formatDate(application.created_at)}</strong></p>
+      <button className="ats-detail-button" type="button" onClick={onDetails}>
+        <Eye size={15} aria-hidden="true" /> Xem chi tiết
+      </button>
+      {(nextStatus || !["hired", "rejected"].includes(application.status)) && (
+        <div className="ats-card-actions">
+          {nextStatus && (
+            <button className="btn-primary" type="button" onClick={() => onTransition(nextStatus)}>
+              {NEXT_ACTION_LABEL[nextStatus]} <ArrowRight size={15} aria-hidden="true" />
+            </button>
+          )}
+          {!["hired", "rejected"].includes(application.status) && (
+            <button
+              className="ats-reject-button"
+              type="button"
+              title="Từ chối ứng viên"
+              aria-label={`Từ chối ${application.candidate_name}`}
+              onClick={() => onTransition("rejected")}
+            >
+              <XCircle size={18} aria-hidden="true" />
+            </button>
+          )}
+        </div>
+      )}
+    </article>
+  );
+}
+
+function TransitionModal({ application, status, busy, error, onClose, onConfirm }) {
+  const [reason, setReason] = useState("");
+  const rejected = status === "rejected";
+
+  function submit(event) {
+    event.preventDefault();
+    if (rejected && !reason.trim()) return;
+    onConfirm(reason);
+  }
+
+  return (
+    <div className="ats-modal-backdrop" role="presentation" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <form className="ats-modal ats-transition-modal" role="dialog" aria-modal="true" aria-labelledby="transition-title" onSubmit={submit}>
+        <button className="ats-modal-close" type="button" aria-label="Đóng" title="Đóng" onClick={onClose} disabled={busy}>
+          <X size={20} aria-hidden="true" />
+        </button>
+        <h2 id="transition-title">
+          {rejected ? "Bạn muốn từ chối ứng viên này?" : `Chuyển ứng viên sang ${STATUS_LABELS[status]}?`}
+        </h2>
+        <p className="ats-modal-candidate">{application.candidate_name}</p>
+        <div className="ats-transition-path">
+          <StatusBadge status={application.status} />
+          <ArrowRight size={18} aria-hidden="true" />
+          <StatusBadge status={status} />
+        </div>
+        <Alert>{error}</Alert>
+        <label htmlFor="transition-reason">{rejected ? "Lý do từ chối" : "Lý do / ghi chú (không bắt buộc)"}</label>
+        <textarea
+          id="transition-reason"
+          rows={4}
+          required={rejected}
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          placeholder={rejected ? "Nhập lý do từ chối ứng viên" : "Thêm ghi chú cho lần chuyển bước này"}
+        />
+        <div className="ats-modal-actions">
+          <button className="btn-ghost" type="button" onClick={onClose} disabled={busy}>Hủy</button>
+          <button className={rejected ? "btn-danger" : "btn-primary"} disabled={busy || (rejected && !reason.trim())}>
+            {busy ? "Đang cập nhật..." : "Xác nhận"}
+          </button>
+        </div>
+      </form>
     </div>
   );
+}
+
+function CandidateDetailModal({ application, onClose }) {
+  const [history, setHistory] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [form, setForm] = useState("");
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    api
+      .applicationStatusHistory(application.id)
+      .then(setHistory)
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, [application.id]);
+
+  return (
+    <div className="ats-modal-backdrop" role="presentation" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <section className="ats-modal ats-detail-modal" role="dialog" aria-modal="true" aria-labelledby="candidate-detail-title">
+        <button className="ats-modal-close" type="button" aria-label="Đóng" title="Đóng" onClick={onClose}>
+          <X size={20} aria-hidden="true" />
+        </button>
+        <div className="ats-detail-header">
+          <div>
+            <p className="ats-eyebrow">Hồ sơ ứng viên</p>
+            <h2 id="candidate-detail-title">{application.candidate_name}</h2>
+            <p>{application.candidate_email} · {application.job_title}</p>
+          </div>
+          <StatusBadge status={application.status} />
+        </div>
+
+        <div className="ats-detail-grid">
+          <section>
+            <h3>AI Matching <span>{formatScore(application.final_score)}%</span></h3>
+            <ScoreBar label="Kỹ năng" value={application.skill_score} color="#00b14f" />
+            <ScoreBar label="Kinh nghiệm" value={application.experience_score} color="#3b82f6" />
+            <ScoreBar label="Ngữ nghĩa" value={application.semantic_score} color="#6d5dfb" />
+            <ScoreBar label="Dự án" value={application.project_score} color="#f59e0b" />
+            <h3>Kỹ năng còn thiếu</h3>
+            {application.missing_skills.length > 0 ? (
+              <div className="ats-skill-list">{application.missing_skills.map((skill) => <span key={skill}>{skill}</span>)}</div>
+            ) : <p className="job-meta">Không có kỹ năng thiếu trong kết quả AI.</p>}
+            <h3>Giải thích</h3>
+            <p className="ats-explanation">{application.explanation || "Chưa có giải thích từ hệ thống AI."}</p>
+          </section>
+
+          <section>
+            <h3>Lịch sử tuyển dụng</h3>
+            {loading ? <Spinner /> : error ? <Alert>{error}</Alert> : (
+              <ol className="ats-history">
+                <li>
+                  <time>{formatDateTime(application.created_at)}</time>
+                  <strong>Đã ứng tuyển</strong>
+                </li>
+                {history.map((item) => (
+                  <li key={item.id}>
+                    <time>{formatDateTime(item.changed_at)}</time>
+                    <strong>{STATUS_LABELS[item.old_status]} → {STATUS_LABELS[item.new_status]}</strong>
+                    <span>Người thực hiện: {item.changed_by_name || `#${item.changed_by}`}</span>
+                    {item.reason && <p>{item.reason}</p>}
+                  </li>
+                ))}
+              </ol>
+            )}
+            <Alert type="success">{message}</Alert>
+            <div className="ats-detail-actions">
+              {application.status === "interview" && (
+                <button className="btn-ghost" type="button" onClick={() => setForm(form === "interview" ? "" : "interview")}>Tạo lịch phỏng vấn</button>
+              )}
+              <button className="btn-ghost" type="button" onClick={() => setForm(form === "evaluation" ? "" : "evaluation")}>Đánh giá ứng viên</button>
+            </div>
+            {form === "interview" && <ScheduleInterviewForm applicationId={application.id} onDone={() => { setForm(""); setMessage("Đã tạo lịch phỏng vấn."); }} />}
+            {form === "evaluation" && <EvaluateForm applicationId={application.id} onDone={() => { setForm(""); setMessage("Đã lưu đánh giá ứng viên."); }} />}
+          </section>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function formatScore(value) {
+  return Math.round(Number(value || 0) * 10) / 10;
+}
+
+function formatDate(value) {
+  return new Intl.DateTimeFormat("vi-VN").format(new Date(value));
+}
+
+function formatDateTime(value) {
+  return new Intl.DateTimeFormat("vi-VN", { dateStyle: "short", timeStyle: "short" }).format(new Date(value));
 }
 
 function ScheduleInterviewForm({ applicationId, onDone }) {
@@ -406,7 +659,7 @@ function ScheduleInterviewForm({ applicationId, onDone }) {
       });
       onDone();
     } catch (err) {
-      setError(err.message);
+      setError(err.status === 409 ? "Ứng viên này đã có lịch phỏng vấn." : err.message);
     } finally {
       setBusy(false);
     }

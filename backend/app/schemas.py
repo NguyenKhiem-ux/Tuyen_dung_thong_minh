@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr, ConfigDict
-from typing import Optional
+from typing import Literal, Optional
 from datetime import datetime
 
 
@@ -119,8 +119,20 @@ class ApplicationOut(BaseModel):
     created_at: datetime
 
 
-class StatusUpdateIn(BaseModel):
-    status: str  # applied | screening | interview | offer | hired | rejected
+class ApplicationStatusUpdateIn(BaseModel):
+    status: Literal["applied", "screening", "interview", "offer", "hired", "rejected"]
+    reason: Optional[str] = None
+
+
+class ApplicationStatusHistoryOut(BaseModel):
+    id: int
+    application_id: int
+    old_status: str
+    new_status: str
+    changed_by: int
+    changed_by_name: Optional[str] = None
+    reason: Optional[str] = None
+    changed_at: datetime
 
 
 # ---------- Interview ----------
@@ -145,6 +157,10 @@ class InterviewOut(BaseModel):
     job_title: Optional[str] = None
     candidate_name: Optional[str] = None
     model_config = ConfigDict(from_attributes=True)
+
+
+class InterviewStatusUpdateIn(BaseModel):
+    status: Literal["scheduled", "completed", "cancelled"]
 
 
 # ---------- Evaluation ----------
