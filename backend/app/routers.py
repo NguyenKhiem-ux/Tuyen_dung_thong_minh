@@ -325,6 +325,20 @@ def apply(job_id: int, db: Session = Depends(get_db), user: User = Depends(requi
         missing_skills=", ".join(m["missing_skills"]), explanation=m["explanation"],
     )
     db.add(application)
+    db.flush()
+    if db.scalar(
+        select(ApplicationStatusHistory.id)
+        .where(ApplicationStatusHistory.application_id == application.id)
+        .limit(1)
+    ) is None:
+        db.add(ApplicationStatusHistory(
+            application_id=application.id,
+            old_status=None,
+            new_status="applied",
+            changed_by=user.id,
+            reason=None,
+            changed_at=application.created_at,
+        ))
     db.commit()
     db.refresh(application)
     return {"message": "Applied successfully", "application_id": application.id, "match": m}
@@ -357,9 +371,16 @@ def update_application_status(application_id: int, data: ApplicationStatusUpdate
 
 
 @api.get("/applications/{application_id}/history", response_model=list[ApplicationStatusHistoryOut])
-def application_status_history(application_id: int, db: Session = Depends(get_db), user: User = Depends(require_role("recruiter"))):
+def application_status_history(application_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
     application = db.get(Application, application_id)
-    if not application or application.job.recruiter_id != user.id:
+    if not application:
+        raise HTTPException(404, "Application not found")
+    can_read = (
+        user.role == "candidate" and application.candidate_id == user.id
+    ) or (
+        user.role == "recruiter" and application.job.recruiter_id == user.id
+    )
+    if not can_read:
         raise HTTPException(404, "Application not found")
     rows = list(db.scalars(
         select(ApplicationStatusHistory)

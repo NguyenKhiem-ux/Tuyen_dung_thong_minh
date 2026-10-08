@@ -1,0 +1,36 @@
+pair_id,resume_id,candidate_id,job_id,job_title,job_skills,min_experience,ai_score,human_relevance,notes
+resume_1_job_1,1,4,1,Backend Developer (Python/FastAPI),"python, fastapi, sql, docker, git, rest api",1.0,67.78,3,"R?t phù h?p v?i Backend: Python, FastAPI, SQL, Docker và Git"
+resume_1_job_2,1,4,2,Frontend Developer (React),"react, javascript, typescript, html, css, git",0.5,32.58,1,"Có ki?n th?c web và Git nh?ng thi?u React, JavaScript và TypeScript"
+resume_1_job_3,1,4,3,Data Analyst,"sql, excel, power bi, python, pandas",1.0,41.88,1,"Có Python và SQL nh?ng thi?u các k? n?ng Data Analyst chính nh? Excel, Power BI và Pandas"
+resume_1_job_4,1,4,4,Machine Learning Engineer,"python, pytorch, tensorflow, nlp, machine learning, docker",2.0,39.08,1,"Có Python và Docker nh?ng thi?u PyTorch, TensorFlow, NLP và kinh nghi?m Machine Learning"
+resume_1_job_5,1,4,5,DevOps Engineer,"Docker, Kubernetes, Linux, Git, GitHub Actions, CI/CD, Nginx, AWS, Jenkins, Terraform, Bash, Python, Prometheus, Grafana",1.0,34.42,1,"Có Docker, Git và Python nh?ng thi?u ph?n l?n DevOps stack"
+
+resume_2_job_1,2,5,1,Backend Developer (Python/FastAPI),"python, fastapi, sql, docker, git, rest api",1.0,32.82,1,"Có ki?n th?c web và Git nh?ng thi?u FastAPI và backend stack chính"
+resume_2_job_2,2,5,2,Frontend Developer (React),"react, javascript, typescript, html, css, git",0.5,68.77,3,"R?t phù h?p Frontend v?i React, JavaScript, HTML, CSS và Git"
+resume_2_job_3,2,5,3,Data Analyst,"sql, excel, power bi, python, pandas",1.0,25.86,0,"Không t?p trung vào phân tích d? li?u và thi?u ph?n l?n k? n?ng Data Analyst"
+resume_2_job_4,2,5,4,Machine Learning Engineer,"python, pytorch, tensorflow, nlp, machine learning, docker",2.0,25.86,0,"Không có n?n t?ng Machine Learning rõ ràng"
+resume_2_job_5,2,5,5,DevOps Engineer,"Docker, Kubernetes, Linux, Git, GitHub Actions, CI/CD, Nginx, AWS, Jenkins, Terraform, Bash, Python, Prometheus, Grafana",1.0,28.84,1,"Có Git nh?ng thi?u ph?n l?n k? n?ng DevOps"
+
+resume_3_job_1,3,6,1,Backend Developer (Python/FastAPI),"python, fastapi, sql, docker, git, rest api",1.0,46.01,1,"Có Python và SQL nh?ng không t?p trung vào phát tri?n Backend FastAPI"
+resume_3_job_2,3,6,2,Frontend Developer (React),"react, javascript, typescript, html, css, git",0.5,32.42,0,"Thi?u React, JavaScript và TypeScript"
+resume_3_job_3,3,6,3,Data Analyst,"sql, excel, power bi, python, pandas",1.0,50.19,3,"Phù h?p v?i Data Analyst nh? Python, SQL và k? n?ng phân tích d? li?u"
+resume_3_job_4,3,6,4,Machine Learning Engineer,"python, pytorch, tensorflow, nlp, machine learning, docker",2.0,53.55,3,"Phù h?p v?i Machine Learning nh? Python và các k? n?ng AI liên quan"
+resume_3_job_5,3,6,5,DevOps Engineer,"Docker, Kubernetes, Linux, Git, GitHub Actions, CI/CD, Nginx, AWS, Jenkins, Terraform, Bash, Python, Prometheus, Grafana",1.0,31.47,1,"Có Python ho?c Docker nh?ng thi?u ph?n l?n DevOps stack"
+
+resume_4_job_1,4,4,1,Backend Developer (Python/FastAPI),"python, fastapi, sql, docker, git, rest api",1.0,0.0,,"C?n ki?m tra CV: có d?u hi?u trích xu?t n?i dung không thành công"
+resume_4_job_2,4,4,2,Frontend Developer (React),"react, javascript, typescript, html, css, git",0.5,0.0,,"C?n ki?m tra CV: có d?u hi?u trích xu?t n?i dung không thành công"
+resume_4_job_3,4,4,3,Data Analyst,"sql, excel, power bi, python, pandas",1.0,0.0,,"C?n ki?m tra CV: có d?u hi?u trích xu?t n?i dung không thành công"
+resume_4_job_4,4,4,4,Machine Learning Engineer,"python, pytorch, tensorflow, nlp, machine learning, docker",2.0,0.0,,"C?n ki?m tra CV: có d?u hi?u trích xu?t n?i dung không thành công"
+resume_4_job_5,4,4,5,DevOps Engineer,"Docker, Kubernetes, Linux, Git, GitHub Actions, CI/CD, Nginx, AWS, Jenkins, Terraform, Bash, Python, Prometheus, Grafana",1.0,0.1,,"C?n ki?m tra CV: có d?u hi?u trích xu?t n?i dung không thành công"
+
+resume_5_job_1,5,7,1,Backend Developer (Python/FastAPI),"python, fastapi, sql, docker, git, rest api",1.0,0.0,,"C?n ki?m tra CV: có d?u hi?u trích xu?t n?i dung không thành công"
+resume_5_job_2,5,7,2,Frontend Developer (React),"react, javascript, typescript, html, css, git",0.5,0.0,,"C?n ki?m tra CV: có d?u hi?u trích xu?t n?i dung không thành công"
+resume_5_job_3,5,7,3,Data Analyst,"sql, excel, power bi, python, pandas",1.0,0.0,,"C?n ki?m tra CV: có d?u hi?u trích xu?t n?i dung không thành công"
+resume_5_job_4,5,7,4,Machine Learning Engineer,"python, pytorch, tensorflow, nlp, machine learning, docker",2.0,0.0,,"C?n ki?m tra CV: có d?u hi?u trích xu?t n?i dung không thành công"
+resume_5_job_5,5,7,5,DevOps Engineer,"Docker, Kubernetes, Linux, Git, GitHub Actions, CI/CD, Nginx, AWS, Jenkins, Terraform, Bash, Python, Prometheus, Grafana",1.0,0.0,,"C?n ki?m tra CV: có d?u hi?u trích xu?t n?i dung không thành công"
+
+resume_6_job_1,6,7,1,Backend Developer (Python/FastAPI),"python, fastapi, sql, docker, git, rest api",1.0,10.36,1,"Có m?t s? k? n?ng liên quan nh?ng ch?a ?? yêu c?u Backend"
+resume_6_job_2,6,7,2,Frontend Developer (React),"react, javascript, typescript, html, css, git",0.5,23.0,2,"Khá phù h?p v?i Frontend nh?ng v?n thi?u m?t s? k? n?ng ho?c kinh nghi?m"
+resume_6_job_3,6,7,3,Data Analyst,"sql, excel, power bi, python, pandas",1.0,9.74,0,"Thi?u ph?n l?n k? n?ng Data Analyst"
+resume_6_job_4,6,7,4,Machine Learning Engineer,"python, pytorch, tensorflow, nlp, machine learning, docker",2.0,2.13,0,"Thi?u Machine Learning, PyTorch, TensorFlow và NLP"
+resume_6_job_5,6,7,5,DevOps Engineer,"Docker, Kubernetes, Linux, Git, GitHub Actions, CI/CD, Nginx, AWS, Jenkins, Terraform, Bash, Python, Prometheus, Grafana",1.0,7.64,0,"Thi?u ph?n l?n DevOps stack nh? Kubernetes, AWS, Terraform, Jenkins và monitoring"

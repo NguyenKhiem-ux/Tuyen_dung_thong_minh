@@ -1,0 +1,155 @@
+resume_id,candidate_id,extracted_text,extracted_skills,experience,education,projects,text_length,parse_status
+1,4,"Le Van An - Backend Developer
+3 years of experience with Python, FastAPI, Django, SQL, PostgreSQL, Docker, Git and REST API.
+Education: Bachelor of Computer Science, Hanoi University of Science and Technology.
+Project: Built a microservices job-matching platform on GitHub using FastAPI and Docker.
+","django, docker, fastapi, git, microservices, postgresql, python, rest api, sql",3.0,"Education: Bachelor of Computer Science, Hanoi University of Science and Technology.",Project: Built a microservices job-matching platform on GitHub using FastAPI and Docker.,298,OK
+2,5,"Pham Thi Bich - Frontend Developer
+2 years experience with React, JavaScript, TypeScript, HTML, CSS, Git.
+Education: Bachelor of Information Technology, University of Economics.
+Project: Portfolio website and an e-commerce dashboard built with React.
+","css, git, html, java, javascript, react, typescript",2.0,"Education: Bachelor of Information Technology, University of Economics.",Project: Portfolio website and an e-commerce dashboard built with React.,250,OK
+3,6,"Hoang Van Cuong - Data & ML
+4 years of experience in Python, pandas, numpy, SQL, machine learning, pytorch, NLP.
+Education: Master of Data Science, Vietnam National University.
+Project: Implemented an NLP resume-matching system and a churn-prediction project on GitHub.
+","git, machine learning, nlp, numpy, pandas, python, pytorch, sql",4.0,"Education: Master of Data Science, Vietnam National University.",Project: Implemented an NLP resume-matching system and a churn-prediction project on GitHub.,269,OK
+4,4,"SPEAKING MID-TERM TEST – SCORE SHEET
+
+Student: ___________________________ ID: __________________
+Class: _____________________________ Date: _______________
+
+PART 1 – SOCIAL INTERACTION (3 minutes) – 4 points
+
+PART 2 – TOPIC DEVELOPMENT (4 minutes) – 6 points
+
+FINAL SCORE
+TOTAL: ______ / 10.0
+Examiner’s comment: ______________________________________________
+____________________________________________________________________
+Examiner: __________________________ Signature: ______________",,0,,,492,OK
+5,7," 
+",,0,,,0,EMPTY
+6,7,"​
+Lê Chiến 
+Lập trình viên 
+(024) 6680 5588 
+hotro@topcv.vn 
+Quận Đống Đa, Hà Nội 
+24/08/1997 
+Nam 
+Mục tiêu nghề nghiệp 
+Với 6 năm trong nghề lập trình, triển khai trực tiếp hơn 30 dự án, tôi mong muốn ứng tuyển vào vị trí Senior của 
+Công ty để có thể áp dụng những kiến thức, kinh nghiệm lập trình của bản thân để nâng cấp sản phẩm và mang 
+lại những giá trị hữu ích cho doanh nghiệp. Đồng thời, mục tiêu phát triển trong vòng 2 năm tới của tôi sẽ trở 
+thành một Lead giỏi. 
+Kỹ năng 
+Kỹ năng giao tiếp 
+Kỹ năng đàm phán 
+Kỹ năng thuyết trình 
+Sở thích 
+Đọc sách 
+Nấu ăn 
+Du lịch 
+Học vấn 
+Công nghệ thông tin 
+2014 
+- 
+2017 
+Đại học TopCV 
+​
+Tốt nghiệp loại Giỏi 
+​
+Đạt học bổng 2016 và 2017 
+​
+Đạt giải nhì nghiên cứu khoa học công nghệ 
+Kinh nghiệm làm việc 
+Front End Developer 
+2021 
+
+- 
+2024 
+Công ty TNHH MTV SVT 
+​
+Quản lý các dự án phát triển trang web từ thiết kế ban đầu cho đến hoàn thiện, tối ưu mọi khả năng 
+tương thích trên nhiều trình duyệt và nền tảng. 
+​
+Tham gia đánh giá và thử nghiệm các tính năng mới để đảm bảo web tương thích với các tính năng 
+hiện có. 
+​
+Hợp tác chặt chẽ với các lập trình viên và khách hàng để đáp ứng các yêu cầu, mục tiêu và chức năng 
+mong muốn của dự án. 
+​
+Phát triển và tích hợp các chủ đề tùy chỉnh vào WordPress, PHP-Fusion và Concrete5. 
+​
+Tiến hành đào tạo cho khách hàng về cách xử lý hệ thống quản lý nội dung trang web. 
+​
+Cho phép quảng cáo trên toàn trang web bằng cách lập trình canvas HTML5 để tạo hoạt ảnh cho các 
+phần tử trên nền web. 
+​
+Nghiên cứu, phát triển công nghệ mới để ứng dụng xây dựng các sản phẩm dịch vụ mới 
+​
+Hỗ trợ các thành viên trong nhóm với các chức năng phức tạp, tham gia nhận xét, đánh giá source code 
+của các thành viên trong nhóm 
+Flutter Developer 
+2019 
+- 
+2021 
+Công ty CP Công nghệ NDS 
+​
+Phối hợp với các thành viên trong team thực hiện lập trình và phát triển các sản phẩm trên nền tảng 
+Mobile App. 
+​
+Lên kế hoạch và thực hiện Submit App lên App Store (Google & Apple). 
+​
+Cùng với các thành viên khác tư duy logic, đưa ra các giải pháp xử lý vấn đề trong khi phát triển sản 
+phẩm. 
+​
+Sửa lỗi phát sinh và cải thiện hiệu suất hoạt động của ứng dụng. 
+​
+Chịu trách nhiệm về các tính năng mà mình phát triển end-to-end. 
+​
+Quyết định phương pháp lập trình và cách thức xử lý trong quá trình phát triển, vận hành sản phẩm. 
+​
+Cùng với Product Team xây dựng chiến lược phát triển sản phẩm. 
+Web Developer 
+2017 
+- 
+2019 
+Công ty CP TopCV 
+​
+Phát triển trang web thân thiện với người dùng giúp tăng lưu lượng truy cập, lượt xem trang và trải 
+nghiệm người dùng trên trang tốt 
+​
+Thực hiện bảo trì và cập nhật cho các trang web khách hàng hiện tại. 
+​
+Thực hiện thiết kế layout website, cắt HTML & CSS các sản phẩm Marketing 
+
+​
+Viết và hệ thống tài liệu phần mềm và thông số kỹ thuật. 
+​
+Làm nhiều dự án đồng thời với tiêu chuẩn và hiệu suất cao. 
+​
+Tham gia vào dự án phát triển trang web chơi game trực tuyến lớn. 
+​
+Tích hợp các trang web với Facebook, Twitter và YouTube. 
+Danh hiệu và giải thưởng 
+2023 
+Nhân viên xuất sắc năm công ty NTD 
+2020 
+Nhân viên cống hiến của năm DEF 
+Chứng chỉ 
+2016 
+PHP, MY SQL , JAVA SCRIPTION 
+2017 
+LARAVER, FRAMWORK, JQUERY, REACT 
+2018 
+LINUX, REDIS, MONGODB 
+Hoạt động 
+Thành viên 
+ 
+","css, html, java, linux, mongodb, php, react, redis, sql",0,Đại học TopCV,"Với 6 năm trong nghề lập trình, triển khai trực tiếp hơn 30 dự án, tôi mong muốn ứng tuyển vào vị trí Senior của
+Quản lý các dự án phát triển trang web từ thiết kế ban đầu cho đến hoàn thiện, tối ưu mọi khả năng
+mong muốn của dự án.
+Làm nhiều dự án đồng thời với tiêu chuẩn và hiệu suất cao.
+Tham gia vào dự án phát triển trang web chơi game trực tuyến lớn.",3217,OK

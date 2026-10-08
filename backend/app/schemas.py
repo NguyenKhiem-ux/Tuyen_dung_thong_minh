@@ -127,7 +127,7 @@ class ApplicationStatusUpdateIn(BaseModel):
 class ApplicationStatusHistoryOut(BaseModel):
     id: int
     application_id: int
-    old_status: str
+    old_status: Optional[str] = None
     new_status: str
     changed_by: int
     changed_by_name: Optional[str] = None

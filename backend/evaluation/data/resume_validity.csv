@@ -1,0 +1,7 @@
+resume_id,valid_for_evaluation,reason
+1,true,
+2,true,
+3,true,
+4,false,"Not a CV - Speaking test document"
+5,false,"Empty extracted text"
+6,true,

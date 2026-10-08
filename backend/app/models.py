@@ -107,7 +107,7 @@ class ApplicationStatusHistory(Base):
     __tablename__ = "application_status_history"
     id: Mapped[int] = mapped_column(primary_key=True)
     application_id: Mapped[int] = mapped_column(ForeignKey("applications.id"), index=True)
-    old_status: Mapped[str] = mapped_column(String(30))
+    old_status: Mapped[str | None] = mapped_column(String(30), nullable=True)
     new_status: Mapped[str] = mapped_column(String(30))
     changed_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)

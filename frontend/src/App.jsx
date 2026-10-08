@@ -63,7 +63,8 @@ export default function App() {
     navigate("/", true);
   }
 
-  const candidateTab = Object.keys(candidateRoutes).find((tab) => candidateRoutes[tab] === path);
+  const routePath = path === "/candidate/resume" ? candidateRoutes.resume : path;
+  const candidateTab = Object.keys(candidateRoutes).find((tab) => candidateRoutes[tab] === routePath);
   const requiredRole =
     candidateTab && candidateTab !== "jobs"
       ? "candidate"
@@ -132,7 +133,7 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      <Navbar user={user} loading={loading} onLogout={handleLogout} path={path} />
+      <Navbar user={user} loading={loading} onLogout={handleLogout} path={routePath} />
       {content}
       {(path === "/" || path === "/jobs" || jobId) && <Footer user={user} />}
     </div>

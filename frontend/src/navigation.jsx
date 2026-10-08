@@ -3,7 +3,7 @@ import React, { useEffect, useState } from "react";
 export const candidateRoutes = {
   overview: "/candidate/dashboard",
   jobs: "/jobs",
-  resume: "/candidate/resume",
+  resume: "/candidate/cv",
   applications: "/candidate/applications",
   recommendations: "/candidate/recommendations",
   interviews: "/candidate/interviews",
