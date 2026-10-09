@@ -19,6 +19,7 @@ class User(Base):
     resumes = relationship("Resume", back_populates="candidate")
     applications = relationship("Application", back_populates="candidate")
     companies = relationship("Company", back_populates="recruiter")
+    notifications = relationship("Notification", back_populates="user", cascade="all, delete-orphan")
 
 
 class Company(Base):
@@ -131,6 +132,19 @@ class Interview(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     application = relationship("Application", back_populates="interviews")
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    type: Mapped[str] = mapped_column(String(50))
+    title: Mapped[str] = mapped_column(String(255))
+    message: Mapped[str] = mapped_column(Text)
+    is_read: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User", back_populates="notifications")
 
 
 class Evaluation(Base):

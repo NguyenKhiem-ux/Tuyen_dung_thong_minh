@@ -1,30 +1,17 @@
 import React, { useEffect, useState } from "react";
-import { ArrowRight, Eye, X, XCircle } from "lucide-react";
+import { ArrowRight, BriefcaseBusiness, Eye, ListChecks, Sparkles, Users, X, XCircle } from "lucide-react";
 import api from "../api.js";
-import { Alert, Card, EmptyState, ScoreBar, Spinner, StatusBadge, STATUS_LABELS, Tabs } from "./Common.jsx";
+import { Alert, Card, EmptyState, ScoreBar, Spinner, StatusBadge, STATUS_LABELS } from "./Common.jsx";
 
-export default function RecruiterDashboard() {
-  const [tab, setTab] = useState("overview");
-
+export default function RecruiterDashboard({ activeTab = "overview" }) {
   return (
-    <div className="dashboard">
-      <h2 className="dashboard-title">Bảng điều khiển Nhà tuyển dụng</h2>
-      <Tabs
-        active={tab}
-        onChange={setTab}
-        tabs={[
-          { key: "overview", label: "Thống kê" },
-          { key: "company", label: "Công ty" },
-          { key: "jobs", label: "Tin tuyển dụng" },
-          { key: "applications", label: "Ứng viên & ATS" },
-          { key: "interviews", label: "Lịch phỏng vấn" },
-        ]}
-      />
-      {tab === "overview" && <Overview />}
-      {tab === "company" && <CompanyProfile />}
-      {tab === "jobs" && <JobManager />}
-      {tab === "applications" && <ApplicationsRanking />}
-      {tab === "interviews" && <InterviewList />}
+    <div className="dashboard recruiter-dashboard" data-active-tab={activeTab}>
+      {activeTab !== "overview" && <h2 className="dashboard-title">Bảng điều khiển Nhà tuyển dụng</h2>}
+      {activeTab === "overview" && <Overview />}
+      {activeTab === "company" && <CompanyProfile />}
+      {activeTab === "jobs" && <JobManager />}
+      {activeTab === "applications" && <ApplicationsRanking />}
+      {activeTab === "interviews" && <InterviewList />}
     </div>
   );
 }
@@ -40,41 +27,121 @@ function Overview() {
   if (error) return <Alert>{error}</Alert>;
   if (!stats) return <Spinner />;
 
+  const topCandidates = [...(stats.top_candidates || [])].sort(
+    (a, b) => Number(b.final_score || 0) - Number(a.final_score || 0),
+  );
+  const statusEntries = Object.entries(stats.by_status || {});
+
   return (
-    <div className="grid grid-4">
-      <Card title="Tin tuyển dụng">
-        <div className="stat-number">{stats.total_jobs}</div>
-        <p className="job-meta">{stats.open_jobs} đang mở</p>
-      </Card>
-      <Card title="Tổng ứng viên">
-        <div className="stat-number">{stats.total_applications}</div>
-      </Card>
-      <Card title="Điểm phù hợp trung bình">
-        <div className="stat-number">{stats.average_match_score}%</div>
-      </Card>
-      <Card title="Theo trạng thái" className="span-2">
-        {Object.keys(stats.by_status).length === 0 && <EmptyState text="Chưa có ứng viên." />}
-        {Object.entries(stats.by_status).map(([k, v]) => (
-          <div key={k} className="status-row">
-            <StatusBadge status={k} /> <span>{v}</span>
-          </div>
-        ))}
-      </Card>
-      <Card title="Ứng viên hàng đầu" className="span-2">
-        {stats.top_candidates.length === 0 ? (
-          <EmptyState text="Chưa có dữ liệu." />
-        ) : (
-          stats.top_candidates.map((c, idx) => (
-            <div key={idx} className="status-row">
-              <span>
-                {c.candidate_name} — {c.job_title}
-              </span>
-              <strong>{c.final_score}%</strong>
+    <div className="recruiter-overview">
+      <section className="recruiter-page-header">
+        <p className="recruiter-eyebrow">Tổng quan tuyển dụng</p>
+        <h1>Bảng điều khiển Nhà tuyển dụng</h1>
+        <p>Theo dõi hiệu quả tuyển dụng và những ứng viên nổi bật của bạn.</p>
+      </section>
+
+      <div className="recruiter-stat-grid">
+        <article className="recruiter-stat-card">
+          <span className="recruiter-stat-icon" aria-hidden="true"><BriefcaseBusiness /></span>
+          <h2>Tin tuyển dụng</h2>
+          <strong className="recruiter-stat-value" data-testid="recruiter-total-jobs">{stats.total_jobs}</strong>
+          <p><span>{stats.open_jobs}</span> đang mở</p>
+        </article>
+        <article className="recruiter-stat-card">
+          <span className="recruiter-stat-icon" aria-hidden="true"><Users /></span>
+          <h2>Tổng ứng viên</h2>
+          <strong className="recruiter-stat-value" data-testid="recruiter-total-applications">
+            {stats.total_applications}
+          </strong>
+          <p>Hồ sơ đã tiếp nhận</p>
+        </article>
+        <article className="recruiter-stat-card">
+          <span className="recruiter-stat-icon" aria-hidden="true"><Sparkles /></span>
+          <h2>Điểm phù hợp trung bình</h2>
+          <strong className="recruiter-stat-value" data-testid="recruiter-average-score">
+            {formatScore(stats.average_match_score)}%
+          </strong>
+          <p>Phân tích bởi Smart AI</p>
+        </article>
+        <article className="recruiter-stat-card recruiter-status-card">
+          <span className="recruiter-stat-icon" aria-hidden="true"><ListChecks /></span>
+          <h2>Theo trạng thái</h2>
+          {statusEntries.length === 0 ? (
+            <EmptyState text="Chưa có ứng viên." />
+          ) : (
+            <div className="recruiter-status-list">
+              {statusEntries.map(([status, count]) => (
+                <div key={status} className="recruiter-status-row">
+                  <StatusBadge status={status} />
+                  <strong>{count}</strong>
+                </div>
+              ))}
             </div>
-          ))
+          )}
+        </article>
+      </div>
+
+      <section className="recruiter-top-candidates" aria-labelledby="top-candidates-title">
+        <div className="recruiter-section-heading">
+          <div>
+            <h2 id="top-candidates-title">Ứng viên hàng đầu</h2>
+            <p>Những hồ sơ có điểm phù hợp cao nhất theo phân tích AI.</p>
+          </div>
+          <span>{topCandidates.length} ứng viên</span>
+        </div>
+        {topCandidates.length === 0 ? (
+          <EmptyState text="Chưa có dữ liệu ứng viên." />
+        ) : (
+          <div className="recruiter-candidate-list">
+            {topCandidates.map((candidate, index) => {
+              const score = Math.max(0, Math.min(100, Number(candidate.final_score) || 0));
+              return (
+                <article
+                  className="recruiter-candidate-row"
+                  key={`${candidate.candidate_name}-${candidate.job_title}-${index}`}
+                >
+                  <span className="recruiter-candidate-rank">{index + 1}</span>
+                  <span className="recruiter-candidate-avatar" aria-hidden="true">
+                    {candidateInitials(candidate.candidate_name)}
+                  </span>
+                  <div className="recruiter-candidate-identity">
+                    <strong>{candidate.candidate_name}</strong>
+                    <span>{candidate.job_title}</span>
+                  </div>
+                  <div className="recruiter-candidate-score">
+                    <strong>{formatScore(score)}%</strong>
+                    <span>Điểm phù hợp</span>
+                  </div>
+                  <div
+                    className="recruiter-score-track"
+                    role="progressbar"
+                    aria-label={`Điểm phù hợp của ${candidate.candidate_name}`}
+                    aria-valuemin="0"
+                    aria-valuemax="100"
+                    aria-valuenow={score}
+                  >
+                    <span style={{ width: `${score}%` }} />
+                  </div>
+                </article>
+              );
+            })}
+          </div>
         )}
-      </Card>
+      </section>
     </div>
+  );
+}
+
+function candidateInitials(name = "") {
+  return (
+    name
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(-2)
+      .map((part) => part[0])
+      .join("")
+      .toUpperCase() || "UV"
   );
 }
 

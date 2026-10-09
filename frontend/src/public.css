@@ -198,6 +198,17 @@
   color: #007d3b;
   background: #e8f8ef;
 }
+.recruiter-nav {
+  flex: 1;
+  justify-content: center;
+}
+.recruiter-nav a {
+  border-radius: 11px;
+}
+.recruiter-nav a[aria-current="page"] {
+  color: #007d3b;
+  background: #e8f8ef;
+}
 .site-auth-actions {
   display: flex;
   flex-shrink: 0;
@@ -1568,6 +1579,9 @@
   .site-nav {
     flex-direction: column;
     align-items: stretch;
+  }
+  .recruiter-nav {
+    justify-content: flex-start;
   }
   .site-nav a {
     font-size: 14px;

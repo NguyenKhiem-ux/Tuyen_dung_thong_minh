@@ -163,6 +163,24 @@ class InterviewStatusUpdateIn(BaseModel):
     status: Literal["scheduled", "completed", "cancelled"]
 
 
+# ---------- Notification ----------
+class NotificationOut(BaseModel):
+    id: int
+    user_id: int
+    type: Literal[
+        "application_received",
+        "application_submitted",
+        "application_status_changed",
+        "interview_scheduled",
+        "interview_updated",
+    ]
+    title: str
+    message: str
+    is_read: bool
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
 # ---------- Evaluation ----------
 class EvaluationCreate(BaseModel):
     application_id: int

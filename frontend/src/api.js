@@ -100,6 +100,12 @@ export const api = {
   updateInterviewStatus: (id, status) =>
     request(`/api/interviews/${id}/status`, { method: "PATCH", body: { status } }),
 
+  // notifications
+  notifications: () => request("/api/notifications"),
+  notificationUnreadCount: () => request("/api/notifications/unread-count"),
+  markNotificationRead: (id) => request(`/api/notifications/${id}/read`, { method: "PATCH" }),
+  markAllNotificationsRead: () => request("/api/notifications/read-all", { method: "PATCH" }),
+
   // evaluations
   createEvaluation: (payload) => request("/api/evaluations", { method: "POST", body: payload }),
   listEvaluations: (applicationId) => request(`/api/applications/${applicationId}/evaluations`),

@@ -109,3 +109,7 @@ smart-recruitment/
 Đây vẫn là kiến trúc MVP có thể mở rộng: engine AI hiện dùng TF-IDF + rule-based
 (không cần API key). Có thể nâng cấp lên Sentence Transformers, LLM, RAG, hoặc
 Agent layer mà không cần đổi schema API.
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload
+admin@smartrecruit.ai
+Admin@123
+Tài khoản demo: candidate1@demo.ai / recruiter1@demo.ai / mật khẩu Password123 (chạy seed_demo.py để tạo dữ liệu mẫu).

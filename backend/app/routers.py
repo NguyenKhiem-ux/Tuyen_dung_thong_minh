@@ -1,15 +1,17 @@
+import logging
 import os
 import uuid
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import select, func, or_
+from sqlalchemy import select, func, or_, update
+from sqlalchemy.exc import SQLAlchemyError
 
 from .database import get_db
 from .models import (
     User, Job, Resume, Application, ApplicationStatusHistory,
-    Company, Interview, Evaluation,
+    Company, Interview, Notification, Evaluation,
 )
 from .schemas import (
     RegisterIn, LoginIn, Token, UserOut,
@@ -17,7 +19,7 @@ from .schemas import (
     JobCreate, JobUpdate, JobOut,
     ResumeOut,
     ApplicationOut, ApplicationStatusUpdateIn, ApplicationStatusHistoryOut,
-    InterviewCreate, InterviewOut, InterviewStatusUpdateIn,
+    InterviewCreate, InterviewOut, InterviewStatusUpdateIn, NotificationOut,
     EvaluationCreate, EvaluationOut,
     AdminUserUpdate,
 )
@@ -30,6 +32,7 @@ from .ai_service import (
 from .config import settings, MAX_UPLOAD_BYTES
 
 api = APIRouter(prefix="/api")
+logger = logging.getLogger(__name__)
 os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
 
 APPLICATION_TRANSITIONS = {
@@ -40,6 +43,25 @@ APPLICATION_TRANSITIONS = {
     "hired": set(),
     "rejected": set(),
 }
+
+APPLICATION_STATUS_TITLES = {
+    "screening": "Đơn ứng tuyển đang được sàng lọc",
+    "interview": "Bạn đã vào vòng phỏng vấn",
+    "offer": "Bạn đã nhận được Offer",
+    "hired": "Chúc mừng! Bạn đã được tuyển",
+    "rejected": "Cập nhật kết quả ứng tuyển",
+}
+
+
+def _save_notifications(db: Session, *notifications: Notification) -> None:
+    if not notifications:
+        return
+    try:
+        db.add_all(notifications)
+        db.commit()
+    except SQLAlchemyError:
+        db.rollback()
+        logger.exception("Could not persist notifications")
 
 
 # =====================================================================
@@ -288,6 +310,16 @@ def _transition_application(a: Application, new_status: str, user: User, db: Ses
         changed_by=user.id,
         reason=(reason or "").strip() or None,
     ))
+    title = APPLICATION_STATUS_TITLES[new_status]
+    message = f"{title} cho vị trí {a.job.title}."
+    if new_status == "rejected" and reason:
+        message += f" Lý do: {reason.strip()}"
+    return Notification(
+        user_id=a.candidate_id,
+        type="application_status_changed",
+        title=title,
+        message=message,
+    )
 
 
 def _history_out(item: ApplicationStatusHistory) -> dict:
@@ -326,6 +358,20 @@ def apply(job_id: int, db: Session = Depends(get_db), user: User = Depends(requi
     )
     db.add(application)
     db.flush()
+    notifications = [
+        Notification(
+            user_id=user.id,
+            type="application_submitted",
+            title="Ứng tuyển thành công",
+            message=f"Bạn đã ứng tuyển vị trí {job.title}.",
+        ),
+        Notification(
+            user_id=job.recruiter_id,
+            type="application_received",
+            title="Có ứng viên mới",
+            message=f"{user.full_name or user.email} đã ứng tuyển vị trí {job.title}.",
+        ),
+    ]
     if db.scalar(
         select(ApplicationStatusHistory.id)
         .where(ApplicationStatusHistory.application_id == application.id)
@@ -340,6 +386,7 @@ def apply(job_id: int, db: Session = Depends(get_db), user: User = Depends(requi
             changed_at=application.created_at,
         ))
     db.commit()
+    _save_notifications(db, *notifications)
     db.refresh(application)
     return {"message": "Applied successfully", "application_id": application.id, "match": m}
 
@@ -364,8 +411,9 @@ def update_application_status(application_id: int, data: ApplicationStatusUpdate
     a = db.get(Application, application_id)
     if not a or a.job.recruiter_id != user.id:
         raise HTTPException(404, "Application not found")
-    _transition_application(a, data.status, user, db, data.reason)
+    notification = _transition_application(a, data.status, user, db, data.reason)
     db.commit()
+    _save_notifications(db, notification)
     db.refresh(a)
     return _app_out(a)
 
@@ -445,10 +493,23 @@ def schedule_interview(data: InterviewCreate, db: Session = Depends(get_db), use
         duration_minutes=data.duration_minutes, mode=data.mode, location=data.location,
         notes=data.notes, created_by=user.id,
     )
+    status_notification = None
     if application.status != "interview":
-        _transition_application(application, "interview", user, db, "Tạo lịch phỏng vấn")
+        status_notification = _transition_application(application, "interview", user, db, "Tạo lịch phỏng vấn")
     db.add(interview)
+    db.flush()
+    mode = "Trực tuyến" if interview.mode == "online" else "Tại chỗ"
+    interview_notification = Notification(
+        user_id=application.candidate_id,
+        type="interview_scheduled",
+        title="Lịch phỏng vấn mới",
+        message=(
+            f"Phỏng vấn vị trí {application.job.title} vào "
+            f"{interview.scheduled_at.strftime('%d/%m/%Y %H:%M')} ({mode})."
+        ),
+    )
     db.commit()
+    _save_notifications(db, *([status_notification] if status_notification else []), interview_notification)
     db.refresh(interview)
     return _interview_out(interview)
 
@@ -476,9 +537,68 @@ def update_interview_status(interview_id: int, data: InterviewStatusUpdateIn, db
         raise HTTPException(404, "Interview not found")
     if data.status not in ("scheduled", "completed", "cancelled"):
         raise HTTPException(400, "Status must be scheduled, completed or cancelled")
+    if interview.status == data.status:
+        return {"message": "Interview updated"}
     interview.status = data.status
+    titles = {
+        "scheduled": "Lịch phỏng vấn đã được cập nhật",
+        "completed": "Buổi phỏng vấn đã được đánh dấu hoàn thành",
+        "cancelled": "Lịch phỏng vấn đã bị hủy",
+    }
+    notification = Notification(
+        user_id=interview.application.candidate_id,
+        type="interview_updated",
+        title=titles[data.status],
+        message=f"{titles[data.status]} cho vị trí {interview.application.job.title}.",
+    )
     db.commit()
+    _save_notifications(db, notification)
     return {"message": "Interview updated"}
+
+
+# =====================================================================
+# NOTIFICATIONS
+# =====================================================================
+@api.get("/notifications", response_model=list[NotificationOut])
+def list_notifications(db: Session = Depends(get_db), user: User = Depends(current_user)):
+    return list(db.scalars(
+        select(Notification)
+        .where(Notification.user_id == user.id)
+        .order_by(Notification.created_at.desc(), Notification.id.desc())
+    ))
+
+
+@api.get("/notifications/unread-count")
+def notification_unread_count(db: Session = Depends(get_db), user: User = Depends(current_user)):
+    count = db.scalar(
+        select(func.count(Notification.id))
+        .where(Notification.user_id == user.id, Notification.is_read.is_(False))
+    ) or 0
+    return {"count": count}
+
+
+@api.patch("/notifications/read-all")
+def read_all_notifications(db: Session = Depends(get_db), user: User = Depends(current_user)):
+    db.execute(
+        update(Notification)
+        .where(Notification.user_id == user.id, Notification.is_read.is_(False))
+        .values(is_read=True)
+    )
+    db.commit()
+    return {"message": "All notifications marked as read"}
+
+
+@api.patch("/notifications/{notification_id}/read", response_model=NotificationOut)
+def read_notification(notification_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    notification = db.scalar(
+        select(Notification).where(Notification.id == notification_id, Notification.user_id == user.id)
+    )
+    if not notification:
+        raise HTTPException(404, "Notification not found")
+    notification.is_read = True
+    db.commit()
+    db.refresh(notification)
+    return notification
 
 
 # =====================================================================

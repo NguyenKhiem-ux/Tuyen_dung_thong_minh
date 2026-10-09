@@ -8,7 +8,7 @@ async function login(page, role = "candidate") {
   await page.locator('input[type="email"]').fill(email);
   await page.locator('input[type="password"]').fill(role === "admin" ? "Admin@123" : "Password123");
   await page.locator(".auth-form").getByRole("button", { name: "Đăng nhập", exact: true }).click();
-  await expect(page).toHaveURL(/\/$/);
+  await expect(page).toHaveURL(role === "candidate" ? /\/$/ : new RegExp(`/${role}/dashboard$`));
   await expect(page.locator(".site-user-info strong")).not.toBeEmpty();
 }
 
@@ -174,13 +174,51 @@ test("candidate application handles missing CV and success without changing the 
   await expect(page.getByRole("button", { name: "Đã ứng tuyển", exact: true })).toBeDisabled();
 });
 
-test("recruiter and admin Home and existing dashboards remain reachable", async ({ page }) => {
+test("recruiter header drives the API-backed dashboard and admin remains reachable", async ({ page, request }) => {
   for (const role of ["recruiter", "admin"]) {
     await login(page, role);
-    await page.locator(".site-user-menu summary").click();
-    await page.locator(".site-user-dropdown").getByRole("link", { name: "Bảng điều khiển" }).click();
     await expect(page).toHaveURL(new RegExp(`/${role}/dashboard$`));
-    await expect(page.locator(".dashboard-title")).toBeVisible();
+    if (role === "recruiter") {
+      const token = await page.evaluate(() => localStorage.getItem("sra_token"));
+      const statsResponse = await request.get(`${apiURL}/api/stats/recruiter`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      expect(statsResponse.ok()).toBeTruthy();
+      const stats = await statsResponse.json();
+      const navItems = [
+        ["Thống kê", "overview"],
+        ["Công ty", "company"],
+        ["Tin tuyển dụng", "jobs"],
+        ["Ứng viên & ATS", "applications"],
+        ["Lịch phỏng vấn", "interviews"],
+      ];
+
+      await expect(page.getByRole("heading", { name: "Bảng điều khiển Nhà tuyển dụng", level: 1 })).toBeVisible();
+      await expect(page.getByText("Theo dõi hiệu quả tuyển dụng và những ứng viên nổi bật của bạn.")).toBeVisible();
+      await expect(page.locator(".recruiter-nav a")).toHaveCount(5);
+      await expect(page.locator(".dashboard > .tabs")).toHaveCount(0);
+      await expect(page.getByLabel(/^Thông báo/)).toBeVisible();
+      await expect(page.locator('[data-testid="recruiter-total-jobs"]')).toHaveText(String(stats.total_jobs));
+      await expect(page.locator('[data-testid="recruiter-total-applications"]')).toHaveText(
+        String(stats.total_applications),
+      );
+
+      if (stats.top_candidates.length) {
+        const expectedTop = [...stats.top_candidates].sort((a, b) => b.final_score - a.final_score)[0];
+        await expect(page.locator(".recruiter-candidate-row").first()).toContainText(expectedTop.candidate_name);
+      }
+
+      for (const [label, tab] of navItems) {
+        await page.locator(".recruiter-nav").getByRole("link", { name: label, exact: true }).click();
+        await expect(page.locator(".recruiter-dashboard")).toHaveAttribute("data-active-tab", tab);
+        await expect(page.locator(".recruiter-nav").getByRole("link", { name: label, exact: true })).toHaveAttribute(
+          "aria-current",
+          "page",
+        );
+      }
+    } else {
+      await expect(page.locator(".dashboard-title")).toBeVisible();
+    }
     await page.goto("/candidate/resume");
     await expect(page.getByText("Trang này không dành cho vai trò của bạn.")).toBeVisible();
     await page.locator(".site-user-menu summary").click();

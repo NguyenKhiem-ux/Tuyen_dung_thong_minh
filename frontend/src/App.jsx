@@ -12,6 +12,7 @@ import "./public.css";
 
 export default function App() {
   const [user, setUser] = useState(null);
+  const [recruiterTab, setRecruiterTab] = useState("overview");
   const location = useLocation();
   const path = location.pathname.replace(/\/+$/, "") || "/";
   const [loading, setLoading] = useState(true);
@@ -45,10 +46,11 @@ export default function App() {
     setStoredUser(data.user);
     setUser(data.user);
     setError("");
-    navigate(authDestination(), true);
+    navigate(authDestination(data.user), true);
   }
 
-  function authDestination() {
+  function authDestination(authUser = user) {
+    if (authUser?.role === "recruiter" || authUser?.role === "admin") return dashboardPath(authUser);
     const redirect = location.searchParams.get("redirect") || "/";
     return redirect.startsWith("/") && !redirect.startsWith("//")
       ? redirect
@@ -59,6 +61,7 @@ export default function App() {
     setToken(null);
     setStoredUser(null);
     setUser(null);
+    setRecruiterTab("overview");
     setError("");
     navigate("/", true);
   }
@@ -87,7 +90,7 @@ export default function App() {
     );
   else if (authPage)
     content = user ? (
-      <Redirect to={authDestination()} />
+      <Redirect to={authDestination(user)} />
     ) : (
       <AuthForm
         key={path}
@@ -117,7 +120,7 @@ export default function App() {
             onTabChange={(tab) => navigate(candidateRoutes[tab])}
           />
         )}
-        {requiredRole === "recruiter" && <RecruiterDashboard />}
+        {requiredRole === "recruiter" && <RecruiterDashboard activeTab={recruiterTab} />}
         {requiredRole === "admin" && <AdminDashboard />}
       </main>
     );
@@ -133,7 +136,14 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      <Navbar user={user} loading={loading} onLogout={handleLogout} path={routePath} />
+      <Navbar
+        user={user}
+        loading={loading}
+        onLogout={handleLogout}
+        path={routePath}
+        recruiterTab={recruiterTab}
+        onRecruiterTabChange={setRecruiterTab}
+      />
       {content}
       {(path === "/" || path === "/jobs" || jobId) && <Footer user={user} />}
     </div>

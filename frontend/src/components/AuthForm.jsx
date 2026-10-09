@@ -96,10 +96,6 @@ export default function AuthForm({ onSuccess, error, setError, initialMode = "lo
           </button>
         </form>
 
-        <p className="auth-hint">
-          Tài khoản demo: <code>candidate1@demo.ai</code> / <code>recruiter1@demo.ai</code> / mật khẩu{" "}
-          <code>Password123</code> (chạy <code>seed_demo.py</code> để tạo dữ liệu mẫu).
-        </p>
       </div>
     </div>
   );
