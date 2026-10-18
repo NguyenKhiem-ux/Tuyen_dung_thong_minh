@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import inspect, text
 
 from .routers import api
 from .database import Base, engine
@@ -7,6 +8,28 @@ from . import models  # noqa: F401  (ensure models are registered before create_
 from .config import settings
 
 Base.metadata.create_all(bind=engine)
+
+
+def _migrate_sqlite_columns() -> None:
+    if engine.dialect.name != "sqlite":
+        return
+    inspector = inspect(engine)
+    migrations = {
+        "application_status_history": [("candidate_message", "TEXT")],
+        "notifications": [("application_id", "INTEGER")],
+    }
+    with engine.begin() as connection:
+        for table, columns in migrations.items():
+            existing = {column["name"] for column in inspector.get_columns(table)}
+            for name, column_type in columns:
+                if name not in existing:
+                    connection.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {column_type}"))
+        connection.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_notifications_application_id ON notifications (application_id)"
+        ))
+
+
+_migrate_sqlite_columns()
 
 app = FastAPI(
     title="Smart Recruitment AI",

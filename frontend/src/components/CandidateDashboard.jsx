@@ -736,6 +736,7 @@ function MyApplications() {
   const [state, setState] = useState({ loading: true, apps: [], jobs: {}, interviews: [], histories: {} });
   const [error, setError] = useState("");
   const [filter, setFilter] = useState("all");
+  const focusedApplicationId = new URLSearchParams(window.location.search).get("application");
 
   useEffect(() => {
     let alive = true;
@@ -777,6 +778,13 @@ function MyApplications() {
       alive = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (state.loading || !focusedApplicationId) return;
+    const card = document.getElementById(`application-${focusedApplicationId}`);
+    card?.scrollIntoView({ behavior: "smooth", block: "center" });
+    card?.focus({ preventScroll: true });
+  }, [focusedApplicationId, state.loading]);
 
   const counts = applicationFilterCounts(state.apps);
   const filters = APPLICATION_FILTERS.map((item) => ({ ...item, count: counts[item.key] || 0 }));
@@ -869,15 +877,25 @@ const APPLICATION_STAGES = [
   { key: "result", label: "Kết quả", icon: Check },
 ];
 
+const APPLICATION_EVENT_LABELS = {
+  applied: "Đã ứng tuyển",
+  screening: "Sàng lọc",
+  interview: "Phỏng vấn",
+  offer: "Offer",
+  hired: "Đã tuyển",
+  rejected: "Không phù hợp",
+};
+
 function ApplicationCard({ application, job, interview, history }) {
   const status = application.status || "applied";
   const company = job?.company_name || "Nhà tuyển dụng";
   const location = job?.location || "Chưa cập nhật";
   const employmentType = job?.employment_type || "Chưa cập nhật";
   const hasInterview = status === "interview" && interview;
+  const timeline = buildApplicationTimeline(application, history);
 
   return (
-    <article className={`application-card application-status-${status}`}>
+    <article id={`application-${application.id}`} className={`application-card application-status-${status}`} tabIndex={-1}>
       <header className="application-card-header">
         <div className="application-heading">
           <span className="application-company-icon">
@@ -919,7 +937,8 @@ function ApplicationCard({ application, job, interview, history }) {
         </div>
       </header>
 
-      <ApplicationTimeline application={application} history={history} />
+      <ApplicationTimeline timeline={timeline} />
+      <ApplicationMessages messages={timeline.messages} applicationId={application.id} />
 
       <div className="application-panels">
         <section className="application-panel">
@@ -992,11 +1011,26 @@ export function buildApplicationTimeline(application, history = []) {
       };
     }),
     rejectionReason: terminalStatus === "rejected" ? rejectedEvent?.reason : null,
+    messages: history
+      .filter((item) => (
+        (!item.application_id || item.application_id === application.id) && item.candidate_message?.trim()
+      ))
+      .sort((left, right) => (
+        String(left.changed_at).localeCompare(String(right.changed_at)) || Number(left.id) - Number(right.id)
+      ))
+      .map((item) => ({
+        id: item.id,
+        title: APPLICATION_EVENT_LABELS[item.new_status] || item.new_status,
+        event: item.old_status === item.new_status ? "Lời nhắn ở trạng thái hiện tại" : "Cập nhật trạng thái",
+        message: item.candidate_message.trim(),
+        changedAt: item.changed_at,
+        sender: item.changed_by_name,
+      })),
   };
 }
 
-function ApplicationTimeline({ application, history }) {
-  const { stages, rejectionReason } = buildApplicationTimeline(application, history);
+function ApplicationTimeline({ timeline }) {
+  const { stages, rejectionReason } = timeline;
 
   return (
     <section className="application-timeline">
@@ -1021,6 +1055,29 @@ function ApplicationTimeline({ application, history }) {
         })}
       </div>
       {rejectionReason && <p className="application-reason">Lý do: {rejectionReason}</p>}
+    </section>
+  );
+}
+
+function ApplicationMessages({ messages, applicationId }) {
+  if (messages.length === 0) return null;
+  const headingId = `application-messages-${applicationId}`;
+
+  return (
+    <section className="application-messages" aria-labelledby={headingId}>
+      <h3 id={headingId}>
+        <Send size={22} aria-hidden="true" />
+        Lời nhắn từ nhà tuyển dụng
+      </h3>
+      <div className="application-message-list">
+        {messages.map((item) => (
+          <article key={item.id} className="application-message">
+            <strong>{item.title} — {item.event}</strong>
+            <p>{item.message}</p>
+            <small>{shortDateTime(item.changedAt)}{item.sender ? ` · ${item.sender}` : ""}</small>
+          </article>
+        ))}
+      </div>
     </section>
   );
 }
@@ -1065,6 +1122,13 @@ function shortDate(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "Chưa có thông tin";
   return date.toLocaleDateString("vi-VN");
+}
+
+function shortDateTime(value) {
+  if (!value) return "Chưa có thông tin";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Chưa có thông tin";
+  return date.toLocaleString("vi-VN", { dateStyle: "short", timeStyle: "short" });
 }
 
 function Recommendations() {
@@ -1124,23 +1188,48 @@ function Recommendations() {
 
 function MyInterviews() {
   const [items, setItems] = useState([]);
+  const [proposals, setProposals] = useState([]);
+  const [selectedOptions, setSelectedOptions] = useState({});
+  const [confirmingId, setConfirmingId] = useState(null);
   const [error, setError] = useState("");
   const [filter, setFilter] = useState("scheduled");
   const [copiedId, setCopiedId] = useState(null);
   const [loaded, setLoaded] = useState(false);
 
+  async function load() {
+    setError("");
+    try {
+      const [interviews, pendingProposals] = await Promise.all([
+        api.myInterviews(),
+        api.myInterviewProposals(),
+      ]);
+      setItems(interviews || []);
+      setProposals(pendingProposals || []);
+    } catch (e) {
+      setError(e.message || "Không tải được lịch phỏng vấn.");
+    } finally {
+      setLoaded(true);
+    }
+  }
+
   useEffect(() => {
-    api
-      .myInterviews()
-      .then((data) => {
-        setItems(data || []);
-        setLoaded(true);
-      })
-      .catch((e) => {
-        setError(e.message || "Không tải được lịch phỏng vấn.");
-        setLoaded(true);
-      });
+    load();
   }, []);
+
+  async function confirmProposal(proposalId) {
+    const optionId = selectedOptions[proposalId];
+    if (!optionId) return;
+    setConfirmingId(proposalId);
+    setError("");
+    try {
+      await api.confirmInterviewProposal(proposalId, optionId);
+      await load();
+    } catch (e) {
+      setError(e.message || "Không thể xác nhận thời gian phỏng vấn.");
+    } finally {
+      setConfirmingId(null);
+    }
+  }
 
   async function copyLink(interview) {
     if (!isUrl(interview.location)) return;
@@ -1174,6 +1263,30 @@ function MyInterviews() {
           ))}
         </div>
       </CandidateHero>
+
+      {proposals.length > 0 && (
+        <section className="interview-proposals-section" aria-labelledby="pending-proposals-title">
+          <div className="interview-proposals-heading">
+            <div>
+              <span>Yêu cầu xác nhận</span>
+              <h2 id="pending-proposals-title">Chờ bạn xác nhận</h2>
+            </div>
+            <strong>{proposals.length}</strong>
+          </div>
+          <div className="interview-proposals-list">
+            {proposals.map((proposal) => (
+              <CandidateInterviewProposal
+                key={proposal.id}
+                proposal={proposal}
+                selectedOptionId={selectedOptions[proposal.id] || ""}
+                busy={confirmingId === proposal.id}
+                onSelect={(optionId) => setSelectedOptions((current) => ({ ...current, [proposal.id]: optionId }))}
+                onConfirm={() => confirmProposal(proposal.id)}
+              />
+            ))}
+          </div>
+        </section>
+      )}
 
       <div className="interview-filters" role="tablist" aria-label="Lọc lịch phỏng vấn">
         {INTERVIEW_FILTERS.map(({ key, label, icon: Icon }) => (
@@ -1214,6 +1327,52 @@ function MyInterviews() {
         <InterviewTips />
       </div>
     </div>
+  );
+}
+
+function CandidateInterviewProposal({ proposal, selectedOptionId, busy, onSelect, onConfirm }) {
+  const online = proposal.mode === "online";
+  return (
+    <article className="interview-proposal-card" data-testid={`interview-proposal-${proposal.id}`}>
+      <header>
+        <div>
+          <h3>{proposal.job_title}</h3>
+          {proposal.company_name && <p>{proposal.company_name}</p>}
+        </div>
+        <span><Clock3 size={17} aria-hidden="true" /> Chờ xác nhận</span>
+      </header>
+      <div className="interview-proposal-meta">
+        <span><Video size={17} aria-hidden="true" /> {online ? "Trực tuyến" : "Trực tiếp"}</span>
+        <span><Clock3 size={17} aria-hidden="true" /> {proposal.duration_minutes} phút</span>
+        {proposal.location && (
+          <span>
+            <MapPin size={17} aria-hidden="true" />
+            {isUrl(proposal.location) ? <a href={proposal.location} target="_blank" rel="noreferrer">{proposal.location}</a> : proposal.location}
+          </span>
+        )}
+      </div>
+      {proposal.notes && <p className="interview-proposal-note">{proposal.notes}</p>}
+      <fieldset>
+        <legend>Chọn một thời gian phù hợp</legend>
+        {proposal.options.map((option) => (
+          <label key={option.id} className={Number(selectedOptionId) === option.id ? "is-selected" : ""}>
+            <input
+              type="radio"
+              name={`proposal-${proposal.id}`}
+              value={option.id}
+              checked={Number(selectedOptionId) === option.id}
+              onChange={() => onSelect(option.id)}
+            />
+            <CalendarDays size={18} aria-hidden="true" />
+            <span>{new Date(option.scheduled_at).toLocaleString("vi-VN", { dateStyle: "full", timeStyle: "short" })}</span>
+          </label>
+        ))}
+      </fieldset>
+      <button className="btn-primary btn-with-icon" type="button" disabled={!selectedOptionId || busy} onClick={onConfirm}>
+        <Check size={18} aria-hidden="true" />
+        {busy ? "Đang xác nhận..." : "Xác nhận thời gian"}
+      </button>
+    </article>
   );
 }
 

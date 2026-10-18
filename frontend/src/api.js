@@ -87,8 +87,13 @@ export const api = {
   applyToJob: (jobId) => request(`/api/jobs/${jobId}/apply`, { method: "POST" }),
   myApplications: () => request("/api/applications/me"),
   jobApplications: (jobId) => request(`/api/jobs/${jobId}/applications`),
-  updateApplicationStatus: (id, status, reason = "") =>
-    request(`/api/applications/${id}/status`, { method: "PATCH", body: { status, reason } }),
+  updateApplicationStatus: (id, status, reason = "", candidateMessage = "") =>
+    request(`/api/applications/${id}/status`, {
+      method: "PATCH",
+      body: { status, reason, candidate_message: candidateMessage },
+    }),
+  sendApplicationMessage: (id, candidateMessage) =>
+    request(`/api/applications/${id}/messages`, { method: "POST", body: { candidate_message: candidateMessage } }),
   applicationStatusHistory: (id) => request(`/api/applications/${id}/history`),
 
   // recommendations
@@ -99,6 +104,11 @@ export const api = {
   myInterviews: () => request("/api/interviews/me"),
   updateInterviewStatus: (id, status) =>
     request(`/api/interviews/${id}/status`, { method: "PATCH", body: { status } }),
+  createInterviewProposal: (payload) => request("/api/interview-proposals", { method: "POST", body: payload }),
+  myInterviewProposals: () => request("/api/interview-proposals/me"),
+  recruiterInterviewProposals: () => request("/api/recruiter/interview-proposals"),
+  confirmInterviewProposal: (id, optionId) =>
+    request(`/api/interview-proposals/${id}/confirm`, { method: "POST", body: { option_id: optionId } }),
 
   // notifications
   notifications: () => request("/api/notifications"),

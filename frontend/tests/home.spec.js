@@ -161,7 +161,7 @@ test("candidate application handles missing CV and success without changing the 
   );
   await page.getByRole("button", { name: "Ứng tuyển ngay", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Bạn chưa có CV" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Tải CV ngay" })).toHaveAttribute("href", "/candidate/resume");
+  await expect(page.getByRole("link", { name: "Tải CV ngay" })).toHaveAttribute("href", "/candidate/cv");
   await page.getByRole("button", { name: "Để sau" }).click();
   await page.unroute("**/api/jobs/*/apply");
   await page.route("**/api/jobs/*/apply", (route) => route.fulfill({ json: { match: { final_score: 75 } } }));
@@ -216,8 +216,85 @@ test("recruiter header drives the API-backed dashboard and admin remains reachab
           "page",
         );
       }
+
+      const companyResponse = await request.get(`${apiURL}/api/company/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      expect(companyResponse.ok()).toBeTruthy();
+      const originalCompany = await companyResponse.json();
+      const originalCompanyPayload = {
+        name: originalCompany.name,
+        description: originalCompany.description,
+        website: originalCompany.website,
+        location: originalCompany.location,
+        industry: originalCompany.industry,
+      };
+      const changedName = `${originalCompany.name} QA`;
+      try {
+        await page.locator(".recruiter-nav").getByRole("link", { name: "Công ty", exact: true }).click();
+        await expect(page.getByLabel("Tên công ty", { exact: true })).toHaveValue(originalCompany.name);
+        await page.getByLabel("Tên công ty", { exact: true }).fill(changedName);
+        await expect(page.getByTestId("company-preview-name")).toHaveText(changedName);
+        await page.getByRole("button", { name: "Lưu thông tin", exact: true }).click();
+        await expect(page.getByText("Đã lưu thông tin công ty.", { exact: true })).toBeVisible();
+        await page.reload();
+        await page.locator(".recruiter-nav").getByRole("link", { name: "Công ty", exact: true }).click();
+        await expect(page.getByLabel("Tên công ty", { exact: true })).toHaveValue(changedName);
+      } finally {
+        const restoreResponse = await request.put(`${apiURL}/api/company/me`, {
+          headers: { Authorization: `Bearer ${token}` },
+          data: originalCompanyPayload,
+        });
+        expect(restoreResponse.ok()).toBeTruthy();
+      }
+
+      const testJobTitle = `E2E Recruiter Job ${Date.now()}`;
+      let createdJobId = null;
+      try {
+        await page.locator(".recruiter-nav").getByRole("link", { name: "Tin tuyển dụng", exact: true }).click();
+        await page.getByLabel("Chức danh", { exact: true }).fill(testJobTitle);
+        await page.getByLabel("Mô tả công việc", { exact: true }).fill("Tin kiểm thử tạm thời, sẽ được tự động xóa.");
+        await page.getByLabel("Kỹ năng yêu cầu (phân cách bởi dấu phẩy)", { exact: true }).fill("playwright, testing");
+        await page.getByLabel("Địa điểm", { exact: true }).fill("Remote");
+        await page.getByLabel("Hình thức", { exact: true }).fill("Full-time");
+        await page.getByLabel("Mức lương", { exact: true }).fill("Thỏa thuận");
+        await page.getByRole("button", { name: "Đăng tin", exact: true }).click();
+        await expect(page.getByText("Đã đăng tin tuyển dụng mới.", { exact: true })).toBeVisible();
+
+        const jobsResponse = await request.get(`${apiURL}/api/jobs/mine`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const createdJob = (await jobsResponse.json()).find((job) => job.title === testJobTitle);
+        expect(createdJob).toBeTruthy();
+        createdJobId = createdJob.id;
+        await expect(page.getByTestId(`recruiter-job-${createdJobId}`)).toContainText(testJobTitle);
+
+        await page.reload();
+        await page.locator(".recruiter-nav").getByRole("link", { name: "Tin tuyển dụng", exact: true }).click();
+        const showAllButton = page.getByRole("button", { name: "Xem tất cả", exact: false });
+        if (await showAllButton.count()) await showAllButton.click();
+        await expect(page.getByTestId(`recruiter-job-${createdJobId}`)).toContainText(testJobTitle);
+        await page.getByTestId(`recruiter-job-${createdJobId}`).getByRole("button", { name: "Sửa", exact: true }).click();
+        await page.getByLabel("Chức danh", { exact: true }).fill(`${testJobTitle} Updated`);
+        await page.getByRole("button", { name: "Cập nhật", exact: true }).click();
+        await expect(page.getByTestId(`recruiter-job-${createdJobId}`)).toContainText(`${testJobTitle} Updated`);
+        await page.getByTestId(`recruiter-job-${createdJobId}`).getByRole("button", { name: "Đóng tin", exact: true }).click();
+        await expect(page.getByTestId(`recruiter-job-${createdJobId}`)).toContainText("Đã đóng");
+        page.once("dialog", (dialog) => dialog.accept());
+        await page.getByTestId(`recruiter-job-${createdJobId}`).getByRole("button", { name: "Xóa", exact: true }).click();
+        await expect(page.getByTestId(`recruiter-job-${createdJobId}`)).toHaveCount(0);
+        createdJobId = null;
+      } finally {
+        if (createdJobId) {
+          await request.delete(`${apiURL}/api/jobs/${createdJobId}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+        }
+      }
     } else {
-      await expect(page.locator(".dashboard-title")).toBeVisible();
+      await expect(page.getByRole("heading", { level: 1, name: "Tổng quan hệ thống" })).toBeVisible();
+      await expect(page.locator(".admin-nav a")).toHaveCount(4);
+      await expect(page.locator(".dashboard > .tabs")).toHaveCount(0);
     }
     await page.goto("/candidate/resume");
     await expect(page.getByText("Trang này không dành cho vai trò của bạn.")).toBeVisible();

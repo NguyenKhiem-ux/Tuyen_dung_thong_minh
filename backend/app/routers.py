@@ -1,25 +1,27 @@
 import logging
 import os
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import select, func, or_, update
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from .database import get_db
 from .models import (
     User, Job, Resume, Application, ApplicationStatusHistory,
-    Company, Interview, Notification, Evaluation,
+    Company, Interview, InterviewProposal, InterviewTimeOption, Notification, Evaluation,
 )
 from .schemas import (
     RegisterIn, LoginIn, Token, UserOut,
     CompanyIn, CompanyOut,
     JobCreate, JobUpdate, JobOut,
     ResumeOut,
-    ApplicationOut, ApplicationStatusUpdateIn, ApplicationStatusHistoryOut,
-    InterviewCreate, InterviewOut, InterviewStatusUpdateIn, NotificationOut,
+    ApplicationOut, ApplicationStatusUpdateIn, ApplicationStatusHistoryOut, ApplicationMessageCreate,
+    InterviewCreate, InterviewOut, InterviewStatusUpdateIn,
+    InterviewProposalCreate, InterviewProposalConfirmIn, InterviewProposalOut,
+    NotificationOut,
     EvaluationCreate, EvaluationOut,
     AdminUserUpdate,
 )
@@ -294,7 +296,14 @@ def _app_out(a: Application) -> dict:
     }
 
 
-def _transition_application(a: Application, new_status: str, user: User, db: Session, reason: str | None = None):
+def _transition_application(
+    a: Application,
+    new_status: str,
+    user: User,
+    db: Session,
+    reason: str | None = None,
+    candidate_message: str | None = None,
+):
     old_status = a.status
     if new_status not in APPLICATION_TRANSITIONS.get(old_status, set()):
         raise HTTPException(409, f"Không thể chuyển trạng thái từ {old_status} sang {new_status}.")
@@ -309,20 +318,24 @@ def _transition_application(a: Application, new_status: str, user: User, db: Ses
         new_status=new_status,
         changed_by=user.id,
         reason=(reason or "").strip() or None,
+        candidate_message=(candidate_message or "").strip() or None,
     ))
     title = APPLICATION_STATUS_TITLES[new_status]
     message = f"{title} cho vị trí {a.job.title}."
     if new_status == "rejected" and reason:
         message += f" Lý do: {reason.strip()}"
+    if candidate_message and candidate_message.strip():
+        message += f" Lời nhắn: {candidate_message.strip()}"
     return Notification(
         user_id=a.candidate_id,
+        application_id=a.id,
         type="application_status_changed",
         title=title,
         message=message,
     )
 
 
-def _history_out(item: ApplicationStatusHistory) -> dict:
+def _history_out(item: ApplicationStatusHistory, include_internal: bool = True) -> dict:
     return {
         "id": item.id,
         "application_id": item.application_id,
@@ -330,7 +343,8 @@ def _history_out(item: ApplicationStatusHistory) -> dict:
         "new_status": item.new_status,
         "changed_by": item.changed_by,
         "changed_by_name": item.changed_by_user.full_name if item.changed_by_user else None,
-        "reason": item.reason,
+        "reason": item.reason if include_internal or item.new_status == "rejected" else None,
+        "candidate_message": item.candidate_message,
         "changed_at": item.changed_at,
     }
 
@@ -361,12 +375,14 @@ def apply(job_id: int, db: Session = Depends(get_db), user: User = Depends(requi
     notifications = [
         Notification(
             user_id=user.id,
+            application_id=application.id,
             type="application_submitted",
             title="Ứng tuyển thành công",
             message=f"Bạn đã ứng tuyển vị trí {job.title}.",
         ),
         Notification(
             user_id=job.recruiter_id,
+            application_id=application.id,
             type="application_received",
             title="Có ứng viên mới",
             message=f"{user.full_name or user.email} đã ứng tuyển vị trí {job.title}.",
@@ -383,6 +399,7 @@ def apply(job_id: int, db: Session = Depends(get_db), user: User = Depends(requi
             new_status="applied",
             changed_by=user.id,
             reason=None,
+            candidate_message=None,
             changed_at=application.created_at,
         ))
     db.commit()
@@ -411,11 +428,53 @@ def update_application_status(application_id: int, data: ApplicationStatusUpdate
     a = db.get(Application, application_id)
     if not a or a.job.recruiter_id != user.id:
         raise HTTPException(404, "Application not found")
-    notification = _transition_application(a, data.status, user, db, data.reason)
+    notification = _transition_application(
+        a,
+        data.status,
+        user,
+        db,
+        reason=data.reason,
+        candidate_message=data.candidate_message,
+    )
     db.commit()
     _save_notifications(db, notification)
     db.refresh(a)
     return _app_out(a)
+
+
+@api.post("/applications/{application_id}/messages", response_model=ApplicationStatusHistoryOut)
+def send_application_message(
+    application_id: int,
+    data: ApplicationMessageCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role("recruiter")),
+):
+    application = db.get(Application, application_id)
+    if not application or application.job.recruiter_id != user.id:
+        raise HTTPException(404, "Application not found")
+    candidate_message = data.candidate_message.strip()
+    if not candidate_message:
+        raise HTTPException(400, "Candidate message cannot be empty")
+    history = ApplicationStatusHistory(
+        application_id=application.id,
+        old_status=application.status,
+        new_status=application.status,
+        changed_by=user.id,
+        candidate_message=candidate_message,
+    )
+    db.add_all([
+        history,
+        Notification(
+            user_id=application.candidate_id,
+            application_id=application.id,
+            type="application_message_received",
+            title="Lời nhắn mới từ nhà tuyển dụng",
+            message=f"{candidate_message} — {application.job.title}",
+        ),
+    ])
+    db.commit()
+    db.refresh(history)
+    return _history_out(history)
 
 
 @api.get("/applications/{application_id}/history", response_model=list[ApplicationStatusHistoryOut])
@@ -435,7 +494,7 @@ def application_status_history(application_id: int, db: Session = Depends(get_db
         .where(ApplicationStatusHistory.application_id == application_id)
         .order_by(ApplicationStatusHistory.changed_at.asc(), ApplicationStatusHistory.id.asc())
     ))
-    return [_history_out(item) for item in rows]
+    return [_history_out(item, include_internal=user.role == "recruiter") for item in rows]
 
 
 # =====================================================================
@@ -468,6 +527,207 @@ def recommend_jobs(limit: int = 5, db: Session = Depends(get_db), user: User = D
 # =====================================================================
 # INTERVIEWS
 # =====================================================================
+def _utc_naive(value: datetime) -> datetime:
+    if value.tzinfo is not None:
+        return value.astimezone(timezone.utc).replace(tzinfo=None)
+    return value
+
+
+def _proposal_out(proposal: InterviewProposal) -> dict:
+    application = proposal.application
+    job = application.job if application else None
+    return {
+        "id": proposal.id,
+        "application_id": proposal.application_id,
+        "recruiter_id": proposal.recruiter_id,
+        "status": proposal.status,
+        "selected_option_id": proposal.selected_option_id,
+        "duration_minutes": proposal.duration_minutes,
+        "mode": proposal.mode,
+        "location": proposal.location,
+        "notes": proposal.notes,
+        "job_title": job.title if job else None,
+        "company_name": job.company.name if job and job.company else None,
+        "candidate_name": application.candidate.full_name if application and application.candidate else None,
+        "options": [{"id": option.id, "scheduled_at": option.scheduled_at} for option in proposal.options],
+        "created_at": proposal.created_at,
+        "confirmed_at": proposal.confirmed_at,
+    }
+
+
+@api.post("/interview-proposals", response_model=InterviewProposalOut)
+def create_interview_proposal(
+    data: InterviewProposalCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role("recruiter")),
+):
+    application = db.get(Application, data.application_id)
+    if not application or application.job.recruiter_id != user.id:
+        raise HTTPException(404, "Application not found")
+    if application.status != "screening":
+        raise HTTPException(409, "Application must be in screening before proposing interview times")
+
+    proposed_times = [_utc_naive(value) for value in data.proposed_times]
+    if len(set(proposed_times)) != 3:
+        raise HTTPException(400, "Proposed interview times must be unique")
+    if any(value <= datetime.utcnow() for value in proposed_times):
+        raise HTTPException(400, "Proposed interview times must be in the future")
+    if db.scalar(select(Interview).where(
+        Interview.application_id == application.id,
+        Interview.status != "cancelled",
+    )):
+        raise HTTPException(409, "Application already has an active interview")
+    if db.scalar(select(InterviewProposal.id).where(
+        InterviewProposal.application_id == application.id,
+        InterviewProposal.status == "pending",
+    )):
+        raise HTTPException(409, "Application already has a pending interview proposal")
+
+    proposal = InterviewProposal(
+        application_id=application.id,
+        recruiter_id=user.id,
+        duration_minutes=data.duration_minutes,
+        mode=data.mode,
+        location=data.location.strip(),
+        notes=data.notes.strip(),
+    )
+    db.add(proposal)
+    db.flush()
+    db.add_all([
+        InterviewTimeOption(proposal_id=proposal.id, scheduled_at=value)
+        for value in sorted(proposed_times)
+    ])
+    status_notification = _transition_application(
+        application,
+        "interview",
+        user,
+        db,
+        "Đã gửi đề xuất thời gian phỏng vấn",
+        data.candidate_message,
+    )
+    invitation_notification = Notification(
+        user_id=application.candidate_id,
+        application_id=application.id,
+        type="interview_time_selection_requested",
+        title="Vui lòng chọn thời gian phỏng vấn",
+        message=f"Nhà tuyển dụng đã đề xuất 3 thời gian phỏng vấn cho vị trí {application.job.title}.",
+    )
+    db.add_all([status_notification, invitation_notification])
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(409, "Application already has a pending interview proposal") from exc
+    db.refresh(proposal)
+    return _proposal_out(proposal)
+
+
+@api.get("/interview-proposals/me", response_model=list[InterviewProposalOut])
+def my_interview_proposals(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role("candidate")),
+):
+    proposals = list(db.scalars(
+        select(InterviewProposal)
+        .join(Application)
+        .where(Application.candidate_id == user.id, InterviewProposal.status == "pending")
+        .order_by(InterviewProposal.created_at.desc(), InterviewProposal.id.desc())
+    ))
+    return [_proposal_out(proposal) for proposal in proposals]
+
+
+@api.get("/recruiter/interview-proposals", response_model=list[InterviewProposalOut])
+def recruiter_interview_proposals(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role("recruiter")),
+):
+    proposals = list(db.scalars(
+        select(InterviewProposal)
+        .join(Application, InterviewProposal.application_id == Application.id)
+        .join(Job, Application.job_id == Job.id)
+        .where(Job.recruiter_id == user.id, InterviewProposal.status == "pending")
+        .order_by(InterviewProposal.created_at.desc(), InterviewProposal.id.desc())
+    ))
+    return [_proposal_out(proposal) for proposal in proposals]
+
+
+@api.get("/interview-proposals/{proposal_id}", response_model=InterviewProposalOut)
+def interview_proposal(
+    proposal_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role("candidate")),
+):
+    proposal = db.get(InterviewProposal, proposal_id)
+    if not proposal or proposal.application.candidate_id != user.id:
+        raise HTTPException(404, "Interview proposal not found")
+    return _proposal_out(proposal)
+
+
+@api.post("/interview-proposals/{proposal_id}/confirm", response_model=InterviewOut)
+def confirm_interview_proposal(
+    proposal_id: int,
+    data: InterviewProposalConfirmIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role("candidate")),
+):
+    proposal = db.get(InterviewProposal, proposal_id)
+    if not proposal or proposal.application.candidate_id != user.id:
+        raise HTTPException(404, "Interview proposal not found")
+    if proposal.status != "pending":
+        raise HTTPException(409, "Interview proposal is no longer pending")
+    option = db.get(InterviewTimeOption, data.option_id)
+    if not option or option.proposal_id != proposal.id:
+        raise HTTPException(400, "Interview time option does not belong to this proposal")
+
+    confirmed_at = datetime.utcnow()
+    claimed = db.execute(
+        update(InterviewProposal)
+        .where(InterviewProposal.id == proposal.id, InterviewProposal.status == "pending")
+        .values(status="confirmed", selected_option_id=option.id, confirmed_at=confirmed_at)
+    )
+    if claimed.rowcount != 1:
+        db.rollback()
+        raise HTTPException(409, "Interview proposal is no longer pending")
+
+    interview = db.scalar(select(Interview).where(
+        Interview.application_id == proposal.application_id,
+        Interview.status != "cancelled",
+    ))
+    if interview:
+        interview.scheduled_at = option.scheduled_at
+        interview.duration_minutes = proposal.duration_minutes
+        interview.mode = proposal.mode
+        interview.location = proposal.location
+        interview.notes = proposal.notes
+        interview.status = "scheduled"
+        interview.created_by = proposal.recruiter_id
+    else:
+        interview = Interview(
+            application_id=proposal.application_id,
+            scheduled_at=option.scheduled_at,
+            duration_minutes=proposal.duration_minutes,
+            mode=proposal.mode,
+            location=proposal.location,
+            notes=proposal.notes,
+            status="scheduled",
+            created_by=proposal.recruiter_id,
+        )
+        db.add(interview)
+    db.add(Notification(
+        user_id=proposal.recruiter_id,
+        application_id=proposal.application_id,
+        type="interview_time_confirmed",
+        title="Ứng viên đã xác nhận lịch phỏng vấn",
+        message=(
+            f"{proposal.application.candidate.full_name} đã chọn thời gian phỏng vấn "
+            f"{option.scheduled_at.strftime('%d/%m/%Y %H:%M')} cho vị trí {proposal.application.job.title}."
+        ),
+    ))
+    db.commit()
+    db.refresh(interview)
+    return _interview_out(interview)
+
+
 def _interview_out(i: Interview) -> dict:
     return {
         "id": i.id, "application_id": i.application_id, "scheduled_at": i.scheduled_at,
@@ -488,6 +748,11 @@ def schedule_interview(data: InterviewCreate, db: Session = Depends(get_db), use
     )
     if active_interview:
         raise HTTPException(409, "\u1ee8ng vi\u00ean n\u00e0y \u0111\u00e3 c\u00f3 l\u1ecbch ph\u1ecfng v\u1ea5n.")
+    if db.scalar(select(InterviewProposal.id).where(
+        InterviewProposal.application_id == data.application_id,
+        InterviewProposal.status == "pending",
+    )):
+        raise HTTPException(409, "Ứng viên này đang có đề xuất thời gian chờ xác nhận.")
     interview = Interview(
         application_id=data.application_id, scheduled_at=data.scheduled_at,
         duration_minutes=data.duration_minutes, mode=data.mode, location=data.location,
@@ -501,6 +766,7 @@ def schedule_interview(data: InterviewCreate, db: Session = Depends(get_db), use
     mode = "Trực tuyến" if interview.mode == "online" else "Tại chỗ"
     interview_notification = Notification(
         user_id=application.candidate_id,
+        application_id=application.id,
         type="interview_scheduled",
         title="Lịch phỏng vấn mới",
         message=(
@@ -547,6 +813,7 @@ def update_interview_status(interview_id: int, data: InterviewStatusUpdateIn, db
     }
     notification = Notification(
         user_id=interview.application.candidate_id,
+        application_id=interview.application_id,
         type="interview_updated",
         title=titles[data.status],
         message=f"{titles[data.status]} cho vị trí {interview.application.job.title}.",

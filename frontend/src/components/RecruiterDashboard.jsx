@@ -1,12 +1,29 @@
 import React, { useEffect, useState } from "react";
-import { ArrowRight, BriefcaseBusiness, Eye, ListChecks, Sparkles, Users, X, XCircle } from "lucide-react";
+import {
+  ArrowRight,
+  BriefcaseBusiness,
+  Building2,
+  CalendarDays,
+  CheckCircle2,
+  Clock3,
+  Eye,
+  FileText,
+  Link2,
+  ListChecks,
+  MapPin,
+  Send,
+  Sparkles,
+  Users,
+  Video,
+  X,
+  XCircle,
+} from "lucide-react";
 import api from "../api.js";
-import { Alert, Card, EmptyState, ScoreBar, Spinner, StatusBadge, STATUS_LABELS } from "./Common.jsx";
+import { Alert, EmptyState, ScoreBar, Spinner, StatusBadge, STATUS_LABELS } from "./Common.jsx";
 
 export default function RecruiterDashboard({ activeTab = "overview" }) {
   return (
     <div className="dashboard recruiter-dashboard" data-active-tab={activeTab}>
-      {activeTab !== "overview" && <h2 className="dashboard-title">Bảng điều khiển Nhà tuyển dụng</h2>}
       {activeTab === "overview" && <Overview />}
       {activeTab === "company" && <CompanyProfile />}
       {activeTab === "jobs" && <JobManager />}
@@ -150,12 +167,22 @@ function CompanyProfile() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     api
       .myCompany()
-      .then((c) => setForm({ name: c.name, description: c.description, website: c.website, location: c.location, industry: c.industry }))
-      .catch(() => {});
+      .then((company) =>
+        setForm({
+          name: company.name ?? "",
+          description: company.description ?? "",
+          website: company.website ?? "",
+          location: company.location ?? "",
+          industry: company.industry ?? "",
+        }),
+      )
+      .catch((err) => setError(err.message))
+      .finally(() => setLoading(false));
   }, []);
 
   function update(field, value) {
@@ -178,25 +205,94 @@ function CompanyProfile() {
   }
 
   return (
-    <Card title="Thông tin công ty">
-      <Alert type="success">{message}</Alert>
-      <Alert>{error}</Alert>
-      <form onSubmit={save} className="stacked-form">
-        <label>Tên công ty</label>
-        <input required value={form.name} onChange={(e) => update("name", e.target.value)} />
-        <label>Mô tả</label>
-        <textarea rows={3} value={form.description} onChange={(e) => update("description", e.target.value)} />
-        <label>Website</label>
-        <input value={form.website} onChange={(e) => update("website", e.target.value)} />
-        <label>Địa điểm</label>
-        <input value={form.location} onChange={(e) => update("location", e.target.value)} />
-        <label>Lĩnh vực</label>
-        <input value={form.industry} onChange={(e) => update("industry", e.target.value)} />
-        <button className="btn-primary" disabled={busy}>
-          {busy ? "Đang lưu..." : "Lưu thông tin"}
-        </button>
-      </form>
-    </Card>
+    <div className="recruiter-company-page">
+      <section className="recruiter-page-header recruiter-company-hero">
+        <div>
+          <h1>Thông tin công ty</h1>
+          <p>Cập nhật thông tin doanh nghiệp hiển thị trong tin tuyển dụng và hồ sơ công ty.</p>
+        </div>
+        <span className="recruiter-company-hero-icon" aria-hidden="true">
+          <Building2 />
+        </span>
+      </section>
+
+      <div className="recruiter-company-layout">
+        <section className="recruiter-company-card" aria-labelledby="company-form-title">
+          <header className="recruiter-company-card-heading">
+            <span className="recruiter-company-card-icon" aria-hidden="true"><Building2 /></span>
+            <div>
+              <h2 id="company-form-title">Thông tin công ty</h2>
+              <p>Cập nhật thông tin cơ bản về doanh nghiệp của bạn.</p>
+            </div>
+          </header>
+          <Alert type="success">{message}</Alert>
+          <Alert>{error}</Alert>
+          {loading ? (
+            <Spinner />
+          ) : (
+            <form onSubmit={save} className="stacked-form recruiter-company-form">
+              <label htmlFor="company-name">Tên công ty</label>
+              <input
+                id="company-name"
+                required
+                value={form.name}
+                onChange={(e) => update("name", e.target.value)}
+              />
+              <label htmlFor="company-description">Mô tả</label>
+              <textarea
+                id="company-description"
+                rows={4}
+                value={form.description}
+                onChange={(e) => update("description", e.target.value)}
+              />
+              <label htmlFor="company-website">Website</label>
+              <input id="company-website" value={form.website} onChange={(e) => update("website", e.target.value)} />
+              <label htmlFor="company-location">Địa điểm</label>
+              <input id="company-location" value={form.location} onChange={(e) => update("location", e.target.value)} />
+              <label htmlFor="company-industry">Lĩnh vực</label>
+              <input id="company-industry" value={form.industry} onChange={(e) => update("industry", e.target.value)} />
+              <button className="btn-primary company-save-button" type="submit" disabled={busy}>
+                {busy ? "Đang lưu..." : "Lưu thông tin"}
+              </button>
+            </form>
+          )}
+        </section>
+
+        <aside className="recruiter-company-card recruiter-company-preview" aria-labelledby="company-preview-title">
+          <header className="recruiter-company-card-heading">
+            <span className="recruiter-company-card-icon preview" aria-hidden="true"><Eye /></span>
+            <div>
+              <h2 id="company-preview-title">Xem trước thông tin công ty</h2>
+              <p>Đây là cách thông tin của bạn hiển thị với ứng viên.</p>
+            </div>
+          </header>
+          <div className="recruiter-company-preview-panel">
+            <div className="recruiter-company-preview-cover">
+              <span aria-hidden="true"><Building2 /></span>
+            </div>
+            <div className="recruiter-company-preview-content">
+              <h3 data-testid="company-preview-name">{form.name || "Tên công ty"}</h3>
+              <div className="recruiter-company-preview-row">
+                <FileText aria-hidden="true" />
+                <span>{form.description || "Chưa cập nhật mô tả công ty."}</span>
+              </div>
+              <div className="recruiter-company-preview-row website">
+                <Link2 aria-hidden="true" />
+                <span>{form.website || "Chưa cập nhật website"}</span>
+              </div>
+              <div className="recruiter-company-preview-row">
+                <MapPin aria-hidden="true" />
+                <span>{form.location || "Chưa cập nhật địa điểm"}</span>
+              </div>
+              <div className="recruiter-company-preview-row">
+                <BriefcaseBusiness aria-hidden="true" />
+                <span>{form.industry || "Chưa cập nhật lĩnh vực"}</span>
+              </div>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </div>
   );
 }
 
@@ -209,11 +305,23 @@ function JobManager() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const [loadingJobs, setLoadingJobs] = useState(true);
+  const [actionId, setActionId] = useState(null);
+  const [showAll, setShowAll] = useState(false);
 
-  function load() {
-    api.myJobs().then(setJobs).catch((e) => setError(e.message));
+  async function load() {
+    setLoadingJobs(true);
+    try {
+      setJobs(await api.myJobs());
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoadingJobs(false);
+    }
   }
-  useEffect(load, []);
+  useEffect(() => {
+    load();
+  }, []);
 
   function update(field, value) {
     setForm((f) => ({ ...f, [field]: value }));
@@ -222,14 +330,21 @@ function JobManager() {
   function startEdit(job) {
     setEditingId(job.id);
     setForm({
-      title: job.title, description: job.description, skills: job.skills, min_experience: job.min_experience,
-      location: job.location, employment_type: job.employment_type, salary_range: job.salary_range,
+      title: job.title ?? "",
+      description: job.description ?? "",
+      skills: job.skills ?? "",
+      min_experience: job.min_experience ?? 0,
+      location: job.location ?? "",
+      employment_type: job.employment_type ?? "",
+      salary_range: job.salary_range ?? "",
     });
+    setError("");
+    setMessage("");
   }
 
   function resetForm() {
     setEditingId(null);
-    setForm(emptyJob);
+    setForm({ ...emptyJob });
   }
 
   async function submit(e) {
@@ -246,7 +361,7 @@ function JobManager() {
         setMessage("Đã đăng tin tuyển dụng mới.");
       }
       resetForm();
-      load();
+      await load();
     } catch (err) {
       setError(err.message);
     } finally {
@@ -255,98 +370,194 @@ function JobManager() {
   }
 
   async function toggleStatus(job) {
-    await api.updateJob(job.id, { status: job.status === "open" ? "closed" : "open" });
-    load();
+    setActionId(job.id);
+    setError("");
+    try {
+      await api.updateJob(job.id, { status: job.status === "open" ? "closed" : "open" });
+      await load();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setActionId(null);
+    }
   }
 
   async function remove(job) {
     if (!confirm(`Xóa tin "${job.title}"?`)) return;
-    await api.deleteJob(job.id);
-    load();
+    setActionId(job.id);
+    setError("");
+    try {
+      await api.deleteJob(job.id);
+      if (editingId === job.id) resetForm();
+      await load();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setActionId(null);
+    }
   }
 
+  const visibleJobs = showAll ? jobs : jobs.slice(0, 3);
+
   return (
-    <div>
-      <Card title={editingId ? "Chỉnh sửa tin tuyển dụng" : "Đăng tin tuyển dụng mới"}>
-        <Alert type="success">{message}</Alert>
-        <Alert>{error}</Alert>
-        <form onSubmit={submit} className="stacked-form">
-          <label>Chức danh</label>
-          <input required value={form.title} onChange={(e) => update("title", e.target.value)} />
-          <label>Mô tả công việc</label>
-          <textarea required rows={4} value={form.description} onChange={(e) => update("description", e.target.value)} />
-          <label>Kỹ năng yêu cầu (phân cách bởi dấu phẩy)</label>
-          <input placeholder="python, fastapi, sql" value={form.skills} onChange={(e) => update("skills", e.target.value)} />
-          <div className="grid grid-2">
+    <div className="recruiter-jobs-page">
+      <section className="recruiter-page-header recruiter-company-hero recruiter-jobs-hero">
+        <div>
+          <h1>Tin tuyển dụng</h1>
+          <p>Đăng tin tuyển dụng mới và quản lý các vị trí đang tuyển dụng của bạn.</p>
+        </div>
+        <span className="recruiter-company-hero-icon" aria-hidden="true"><FileText /></span>
+      </section>
+
+      <div className="recruiter-jobs-layout">
+        <section className="recruiter-jobs-card" aria-labelledby="job-form-title">
+          <header className="recruiter-jobs-card-heading">
+            <span className="recruiter-jobs-card-icon" aria-hidden="true"><FileText /></span>
             <div>
-              <label>Kinh nghiệm tối thiểu (năm)</label>
-              <input type="number" step="0.5" min="0" value={form.min_experience} onChange={(e) => update("min_experience", parseFloat(e.target.value) || 0)} />
+              <h2 id="job-form-title">{editingId ? "Chỉnh sửa tin tuyển dụng" : "Đăng tin tuyển dụng mới"}</h2>
+              <p>{editingId ? "Cập nhật thông tin vị trí đang tuyển dụng." : "Tạo cơ hội mới để tiếp cận ứng viên phù hợp."}</p>
             </div>
+          </header>
+          <Alert type="success">{message}</Alert>
+          <Alert>{error}</Alert>
+          <form onSubmit={submit} className="stacked-form recruiter-job-form">
+            <label htmlFor="job-title">Chức danh</label>
+            <input
+              id="job-title"
+              required
+              placeholder="Nhập chức danh vị trí tuyển dụng..."
+              value={form.title}
+              onChange={(e) => update("title", e.target.value)}
+            />
+            <label htmlFor="job-description">Mô tả công việc</label>
+            <textarea
+              id="job-description"
+              required
+              rows={5}
+              placeholder="Mô tả chi tiết công việc, trách nhiệm, quyền lợi..."
+              value={form.description}
+              onChange={(e) => update("description", e.target.value)}
+            />
+            <label htmlFor="job-skills">Kỹ năng yêu cầu (phân cách bởi dấu phẩy)</label>
+            <input
+              id="job-skills"
+              placeholder="python, fastapi, sql"
+              value={form.skills}
+              onChange={(e) => update("skills", e.target.value)}
+            />
+            <div className="recruiter-job-fields">
+              <div>
+                <label htmlFor="job-experience">Kinh nghiệm tối thiểu (năm)</label>
+                <input
+                  id="job-experience"
+                  type="number"
+                  step="0.5"
+                  min="0"
+                  value={form.min_experience}
+                  onChange={(e) => update("min_experience", parseFloat(e.target.value) || 0)}
+                />
+              </div>
+              <div>
+                <label htmlFor="job-location">Địa điểm</label>
+                <input id="job-location" value={form.location} onChange={(e) => update("location", e.target.value)} />
+              </div>
+              <div>
+                <label htmlFor="job-employment-type">Hình thức</label>
+                <input
+                  id="job-employment-type"
+                  value={form.employment_type}
+                  onChange={(e) => update("employment_type", e.target.value)}
+                />
+              </div>
+              <div>
+                <label htmlFor="job-salary">Mức lương</label>
+                <input
+                  id="job-salary"
+                  placeholder="VD: 15-25 triệu"
+                  value={form.salary_range}
+                  onChange={(e) => update("salary_range", e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="form-actions recruiter-job-form-actions">
+              <button className="btn-primary recruiter-job-submit" type="submit" disabled={busy}>
+                <Send size={17} aria-hidden="true" />
+                {busy ? "Đang lưu..." : editingId ? "Cập nhật" : "Đăng tin"}
+              </button>
+              {editingId && (
+                <button type="button" className="btn-ghost" onClick={resetForm}>Hủy</button>
+              )}
+            </div>
+          </form>
+        </section>
+
+        <aside className="recruiter-jobs-card recruiter-current-jobs" aria-labelledby="current-jobs-title">
+          <header className="recruiter-jobs-card-heading recruiter-current-jobs-heading">
+            <span className="recruiter-jobs-card-icon list" aria-hidden="true"><Users /></span>
             <div>
-              <label>Địa điểm</label>
-              <input value={form.location} onChange={(e) => update("location", e.target.value)} />
+              <h2 id="current-jobs-title">Tin tuyển dụng hiện tại</h2>
+              <p>{jobs.length} vị trí của bạn</p>
             </div>
-            <div>
-              <label>Hình thức</label>
-              <input value={form.employment_type} onChange={(e) => update("employment_type", e.target.value)} />
-            </div>
-            <div>
-              <label>Mức lương</label>
-              <input value={form.salary_range} onChange={(e) => update("salary_range", e.target.value)} />
-            </div>
-          </div>
-          <div className="form-actions">
-            <button className="btn-primary" disabled={busy}>
-              {busy ? "Đang lưu..." : editingId ? "Cập nhật" : "Đăng tin"}
-            </button>
-            {editingId && (
-              <button type="button" className="btn-ghost" onClick={resetForm}>
-                Hủy
+            {jobs.length > 3 && (
+              <button
+                className="recruiter-jobs-toggle"
+                type="button"
+                aria-expanded={showAll}
+                onClick={() => setShowAll((value) => !value)}
+              >
+                {showAll ? "Thu gọn" : "Xem tất cả"} <ArrowRight size={14} aria-hidden="true" />
               </button>
             )}
-          </div>
-        </form>
-      </Card>
+          </header>
 
-      {jobs.length === 0 ? (
-        <EmptyState text="Bạn chưa đăng tin tuyển dụng nào." />
-      ) : (
-        <div className="grid grid-2">
-          {jobs.map((job) => (
-            <Card
-              key={job.id}
-              title={job.title}
-              subtitle={`${job.location} · ${job.applicants_count} ứng viên`}
-              right={<span className={`badge ${job.status === "open" ? "status-hired" : "status-rejected"}`}>{job.status === "open" ? "Đang mở" : "Đã đóng"}</span>}
-            >
-              <p className="job-desc">{job.description}</p>
-              <p className="job-meta">Kỹ năng: {job.skills || "Chưa liệt kê"}</p>
-              <div className="form-actions">
-                <button className="btn-ghost" onClick={() => startEdit(job)}>
-                  Sửa
-                </button>
-                <button className="btn-ghost" onClick={() => toggleStatus(job)}>
-                  {job.status === "open" ? "Đóng tin" : "Mở lại"}
-                </button>
-                <button className="btn-danger" onClick={() => remove(job)}>
-                  Xóa
-                </button>
-              </div>
-            </Card>
-          ))}
-        </div>
-      )}
+          {loadingJobs ? (
+            <Spinner />
+          ) : jobs.length === 0 ? (
+            <EmptyState text="Bạn chưa đăng tin tuyển dụng nào." />
+          ) : (
+            <div className={`recruiter-current-job-list ${showAll ? "is-expanded" : ""}`}>
+              {visibleJobs.map((job) => (
+                <article className="recruiter-current-job" data-testid={`recruiter-job-${job.id}`} key={job.id}>
+                  <span className="recruiter-current-job-icon" aria-hidden="true"><BriefcaseBusiness /></span>
+                  <div className="recruiter-current-job-body">
+                    <div className="recruiter-current-job-title">
+                      <h3>{job.title}</h3>
+                      <span className={`recruiter-job-status ${job.status === "open" ? "open" : "closed"}`}>
+                        {job.status === "open" ? "Đang tuyển" : "Đã đóng"}
+                      </span>
+                    </div>
+                    <div className="recruiter-current-job-meta">
+                      {job.location && <span><MapPin />{job.location}</span>}
+                      {job.employment_type && <span><BriefcaseBusiness />{job.employment_type}</span>}
+                      {job.applicants_count != null && <span><Users />{job.applicants_count} ứng viên</span>}
+                    </div>
+                    {job.created_at && <time>Đăng {formatDate(job.created_at)}</time>}
+                    <div className="recruiter-current-job-actions">
+                      <button type="button" onClick={() => startEdit(job)} disabled={actionId === job.id}>Sửa</button>
+                      <button type="button" onClick={() => toggleStatus(job)} disabled={actionId === job.id}>
+                        {job.status === "open" ? "Đóng tin" : "Mở lại"}
+                      </button>
+                      <button className="danger" type="button" onClick={() => remove(job)} disabled={actionId === job.id}>
+                        Xóa
+                      </button>
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </aside>
+      </div>
     </div>
   );
 }
 
 const PIPELINE_COLUMNS = [
-  ["applied", "Đã ứng tuyển"],
-  ["screening", "Sàng lọc"],
-  ["interview", "Phỏng vấn"],
-  ["offer", "Offer"],
-  ["hired", "Đã tuyển"],
-  ["rejected", "Đã từ chối"],
+  ["applied", "Đã ứng tuyển", FileText],
+  ["screening", "Sàng lọc", ListChecks],
+  ["interview", "Phỏng vấn", Users],
+  ["offer", "Offer", Sparkles],
+  ["hired", "Đã tuyển", BriefcaseBusiness],
 ];
 
 const NEXT_STATUS = {
@@ -413,11 +624,11 @@ function ApplicationsRanking() {
     setPending({ application, status });
   }
 
-  async function confirmTransition(reason) {
+  async function confirmTransition({ reason, candidateMessage }) {
     setUpdating(true);
     setError("");
     try {
-      await api.updateApplicationStatus(pending.application.id, pending.status, reason);
+      await api.updateApplicationStatus(pending.application.id, pending.status, reason, candidateMessage);
       setMessage(`Đã chuyển ${pending.application.candidate_name} sang ${STATUS_LABELS[pending.status]}.`);
       setPending(null);
       setDetails(null);
@@ -429,15 +640,33 @@ function ApplicationsRanking() {
     }
   }
 
+  async function confirmInterviewProposal(payload) {
+    setUpdating(true);
+    setError("");
+    try {
+      await api.createInterviewProposal({ application_id: pending.application.id, ...payload });
+      setMessage(`Đã gửi 3 phương án phỏng vấn cho ${pending.application.candidate_name}.`);
+      setPending(null);
+      setDetails(null);
+      await loadApps();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setUpdating(false);
+    }
+  }
+
   const selectedJob = jobs.find((job) => String(job.id) === selectedJobId);
+  const rejectedCandidates = apps
+    .filter((application) => application.status === "rejected")
+    .sort((a, b) => Number(b.final_score || 0) - Number(a.final_score || 0));
 
   return (
     <section className="ats-section">
       <div className="ats-header">
         <div>
-          <p className="ats-eyebrow">ATS Pipeline</p>
-          <h2>Ứng viên & Pipeline tuyển dụng</h2>
-          <p>Theo dõi ứng viên theo từng giai đoạn và điểm matching từ backend.</p>
+          <h1>Ứng viên & Pipeline tuyển dụng</h1>
+          <p>Theo dõi ứng viên theo từng giai đoạn và điểm matching từ AI.</p>
         </div>
         <label className="ats-job-picker">
           <span>Chọn tin tuyển dụng</span>
@@ -448,11 +677,11 @@ function ApplicationsRanking() {
             disabled={loadingJobs || jobs.length === 0}
           >
             {jobs.length === 0 && <option value="">Chưa có tin tuyển dụng</option>}
-          {jobs.map((j) => (
-            <option key={j.id} value={j.id}>
-              {j.title} ({j.applicants_count} ứng viên)
-            </option>
-          ))}
+            {jobs.map((job) => (
+              <option key={job.id} value={job.id}>
+                {job.title} ({job.applicants_count ?? 0} ứng viên)
+              </option>
+            ))}
           </select>
         </label>
       </div>
@@ -466,56 +695,94 @@ function ApplicationsRanking() {
         <EmptyState text="Bạn chưa có tin tuyển dụng để tạo pipeline." />
       ) : (
         <>
-          {selectedJob && <p className="ats-selected-job">{selectedJob.title}</p>}
           {loadingApps ? (
             <Spinner />
           ) : (
             <>
-              {apps.length === 0 && <div className="ats-empty-job">Chưa có ứng viên cho tin tuyển dụng này.</div>}
-              <div className="ats-board" aria-label="Pipeline tuyển dụng">
-                {PIPELINE_COLUMNS.map(([status, label]) => {
-                  const candidates = apps
-                    .filter((application) => application.status === status)
-                    .sort((a, b) => Number(b.final_score || 0) - Number(a.final_score || 0));
-                  return (
-                    <section className={`ats-column ats-column-${status}`} key={status}>
-                      <header>
-                        <h3>{label}</h3>
-                        <span>{candidates.length}</span>
-                      </header>
-                      <div className="ats-column-body">
-                        {candidates.length === 0 ? (
-                          <div className="ats-column-empty">Chưa có ứng viên</div>
-                        ) : (
-                          candidates.map((application) => (
-                            <CandidatePipelineCard
-                              key={application.id}
-                              application={application}
-                              onDetails={() => setDetails(application)}
-                              onTransition={(status) => requestTransition(application, status)}
-                            />
-                          ))
-                        )}
-                      </div>
-                    </section>
-                  );
-                })}
+              <div className="ats-board-viewport">
+                <div className="ats-board" aria-label={`Pipeline tuyển dụng ${selectedJob?.title || ""}`}>
+                  {PIPELINE_COLUMNS.map(([status, label, Icon]) => {
+                    const candidates = apps
+                      .filter((application) => application.status === status)
+                      .sort((a, b) => Number(b.final_score || 0) - Number(a.final_score || 0));
+                    return (
+                      <section className={`ats-column ats-column-${status}`} key={status}>
+                        <header>
+                          <div className="ats-column-title">
+                            <span className="ats-column-icon" aria-hidden="true"><Icon /></span>
+                            <h3>{label}</h3>
+                          </div>
+                          <span className="ats-column-count">{candidates.length}</span>
+                        </header>
+                        <div className="ats-column-body">
+                          {candidates.length === 0 ? (
+                            <div className="ats-column-empty">
+                              <FileText aria-hidden="true" />
+                              <span>Chưa có ứng viên</span>
+                            </div>
+                          ) : (
+                            candidates.map((application) => (
+                              <CandidatePipelineCard
+                                key={application.id}
+                                application={application}
+                                onDetails={() => setDetails(application)}
+                                onTransition={(nextStatus) => requestTransition(application, nextStatus)}
+                              />
+                            ))
+                          )}
+                        </div>
+                      </section>
+                    );
+                  })}
+                </div>
               </div>
+              {rejectedCandidates.length > 0 && (
+                <section className="ats-rejected-section" aria-labelledby="rejected-title">
+                  <header>
+                    <div>
+                      <span className="ats-column-icon" aria-hidden="true"><XCircle /></span>
+                      <h2 id="rejected-title">Đã từ chối</h2>
+                    </div>
+                    <span>{rejectedCandidates.length}</span>
+                  </header>
+                  <div className="ats-rejected-list">
+                    {rejectedCandidates.map((application) => (
+                      <CandidatePipelineCard
+                        key={application.id}
+                        application={application}
+                        onDetails={() => setDetails(application)}
+                        onTransition={(nextStatus) => requestTransition(application, nextStatus)}
+                      />
+                    ))}
+                  </div>
+                </section>
+              )}
             </>
           )}
         </>
       )}
 
       {pending && (
-        <TransitionModal
-          key={`${pending.application.id}-${pending.status}`}
-          application={pending.application}
-          status={pending.status}
-          busy={updating}
-          error={error}
-          onClose={() => !updating && setPending(null)}
-          onConfirm={confirmTransition}
-        />
+        pending.application.status === "screening" && pending.status === "interview" ? (
+          <InterviewProposalModal
+            key={`proposal-${pending.application.id}`}
+            application={pending.application}
+            busy={updating}
+            error={error}
+            onClose={() => !updating && setPending(null)}
+            onConfirm={confirmInterviewProposal}
+          />
+        ) : (
+          <TransitionModal
+            key={`${pending.application.id}-${pending.status}`}
+            application={pending.application}
+            status={pending.status}
+            busy={updating}
+            error={error}
+            onClose={() => !updating && setPending(null)}
+            onConfirm={confirmTransition}
+          />
+        )
       )}
       {details && <CandidateDetailModal application={details} onClose={() => setDetails(null)} />}
     </section>
@@ -524,20 +791,27 @@ function ApplicationsRanking() {
 
 function CandidatePipelineCard({ application, onDetails, onTransition }) {
   const nextStatus = NEXT_STATUS[application.status];
+  const finalScore = formatScore(application.final_score);
+  const scoreLevel = finalScore >= 70 ? "high" : finalScore >= 50 ? "medium" : "low";
   return (
-    <article className="ats-candidate-card">
+    <article className="ats-candidate-card" data-testid={`ats-application-${application.id}`}>
       <div className="ats-candidate-heading">
-        <div>
-          <h4>{application.candidate_name}</h4>
-          <p>{application.job_title}</p>
+        <div className="ats-candidate-identity">
+          <span className="ats-candidate-avatar" aria-hidden="true">{candidateInitials(application.candidate_name)}</span>
+          <div>
+            <h4>{application.candidate_name}</h4>
+            <p>{application.job_title}</p>
+          </div>
         </div>
-        <span className="ats-ai-score">{formatScore(application.final_score)}%</span>
+        <span className={`ats-ai-score ${scoreLevel}`}>{finalScore}%</span>
       </div>
       <dl className="ats-card-scores">
-        <div><dt>Kỹ năng</dt><dd>{formatScore(application.skill_score)}%</dd></div>
-        <div><dt>Kinh nghiệm</dt><dd>{formatScore(application.experience_score)}%</dd></div>
+        {application.skill_score != null && <div><dt>Kỹ năng</dt><dd>{formatScore(application.skill_score)}%</dd></div>}
+        {application.experience_score != null && <div><dt>Kinh nghiệm</dt><dd>{formatScore(application.experience_score)}%</dd></div>}
       </dl>
-      <p className="ats-applied-date">Ứng tuyển: <strong>{formatDate(application.created_at)}</strong></p>
+      {application.created_at && (
+        <p className="ats-applied-date">Ứng tuyển: <strong>{formatDate(application.created_at)}</strong></p>
+      )}
       <button className="ats-detail-button" type="button" onClick={onDetails}>
         <Eye size={15} aria-hidden="true" /> Xem chi tiết
       </button>
@@ -567,12 +841,13 @@ function CandidatePipelineCard({ application, onDetails, onTransition }) {
 
 function TransitionModal({ application, status, busy, error, onClose, onConfirm }) {
   const [reason, setReason] = useState("");
+  const [candidateMessage, setCandidateMessage] = useState("");
   const rejected = status === "rejected";
 
   function submit(event) {
     event.preventDefault();
     if (rejected && !reason.trim()) return;
-    onConfirm(reason);
+    onConfirm({ reason, candidateMessage });
   }
 
   return (
@@ -591,19 +866,131 @@ function TransitionModal({ application, status, busy, error, onClose, onConfirm 
           <StatusBadge status={status} />
         </div>
         <Alert>{error}</Alert>
-        <label htmlFor="transition-reason">{rejected ? "Lý do từ chối" : "Lý do / ghi chú (không bắt buộc)"}</label>
+        <label htmlFor="transition-reason">{rejected ? "Lý do từ chối" : "Ghi chú nội bộ (không bắt buộc)"}</label>
         <textarea
           id="transition-reason"
           rows={4}
           required={rejected}
           value={reason}
           onChange={(e) => setReason(e.target.value)}
-          placeholder={rejected ? "Nhập lý do từ chối ứng viên" : "Thêm ghi chú cho lần chuyển bước này"}
+          placeholder={rejected ? "Nhập lý do từ chối ứng viên" : "Chỉ nhà tuyển dụng nhìn thấy nội dung này"}
         />
+        <label htmlFor="transition-candidate-message">Ghi chú gửi ứng viên (không bắt buộc)</label>
+        <textarea
+          id="transition-candidate-message"
+          rows={4}
+          value={candidateMessage}
+          onChange={(event) => setCandidateMessage(event.target.value)}
+          placeholder="Nhập lời nhắn dành cho ứng viên"
+        />
+        <small className="ats-field-help">Nội dung này sẽ được gửi cho ứng viên và hiển thị trong lịch sử ứng tuyển.</small>
         <div className="ats-modal-actions">
           <button className="btn-ghost" type="button" onClick={onClose} disabled={busy}>Hủy</button>
           <button className={rejected ? "btn-danger" : "btn-primary"} disabled={busy || (rejected && !reason.trim())}>
             {busy ? "Đang cập nhật..." : "Xác nhận"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function InterviewProposalModal({ application, busy, error, onClose, onConfirm }) {
+  const [times, setTimes] = useState(["", "", ""]);
+  const [duration, setDuration] = useState(45);
+  const [mode, setMode] = useState("online");
+  const [location, setLocation] = useState("");
+  const [notes, setNotes] = useState("");
+  const [candidateMessage, setCandidateMessage] = useState("");
+  const [validationError, setValidationError] = useState("");
+
+  function updateTime(index, value) {
+    setTimes((current) => current.map((item, itemIndex) => itemIndex === index ? value : item));
+    setValidationError("");
+  }
+
+  function submit(event) {
+    event.preventDefault();
+    const parsedTimes = times.map((value) => new Date(value));
+    if (times.some((value) => !value) || parsedTimes.some((value) => Number.isNaN(value.getTime()))) {
+      setValidationError("Vui lòng nhập đủ 3 thời gian phỏng vấn.");
+      return;
+    }
+    const isoTimes = parsedTimes.map((value) => value.toISOString());
+    if (new Set(isoTimes).size !== 3) {
+      setValidationError("Ba thời gian phỏng vấn không được trùng nhau.");
+      return;
+    }
+    if (parsedTimes.some((value) => value.getTime() <= Date.now())) {
+      setValidationError("Các thời gian phỏng vấn phải nằm trong tương lai.");
+      return;
+    }
+    if (Number(duration) < 15 || Number(duration) > 480) {
+      setValidationError("Thời lượng phỏng vấn phải từ 15 đến 480 phút.");
+      return;
+    }
+    onConfirm({
+      proposed_times: isoTimes,
+      duration_minutes: Number(duration),
+      mode,
+      location,
+      notes,
+      candidate_message: candidateMessage,
+    });
+  }
+
+  return (
+    <div className="ats-modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <form className="ats-modal interview-proposal-modal" role="dialog" aria-modal="true" aria-labelledby="proposal-title" onSubmit={submit}>
+        <button className="ats-modal-close" type="button" aria-label="Đóng" title="Đóng" onClick={onClose} disabled={busy}>
+          <X size={20} aria-hidden="true" />
+        </button>
+        <h2 id="proposal-title">Đề xuất thời gian phỏng vấn</h2>
+        <p className="ats-modal-candidate">{application.candidate_name} · {application.job_title}</p>
+        <Alert>{validationError || error}</Alert>
+        <div className="interview-proposal-times">
+          {times.map((value, index) => (
+            <label key={index}>
+              Phương án {index + 1}
+              <input
+                required
+                type="datetime-local"
+                value={value}
+                onChange={(event) => updateTime(index, event.target.value)}
+              />
+            </label>
+          ))}
+        </div>
+        <div className="interview-proposal-fields">
+          <label>
+            Hình thức
+            <select value={mode} onChange={(event) => setMode(event.target.value)}>
+              <option value="online">Trực tuyến</option>
+              <option value="onsite">Trực tiếp</option>
+            </select>
+          </label>
+          <label>
+            Thời lượng (phút)
+            <input type="number" min="15" max="480" value={duration} onChange={(event) => setDuration(event.target.value)} />
+          </label>
+        </div>
+        <label>
+          Địa điểm / Link
+          <input value={location} onChange={(event) => setLocation(event.target.value)} />
+        </label>
+        <label>
+          Ghi chú
+          <textarea rows={3} value={notes} onChange={(event) => setNotes(event.target.value)} />
+        </label>
+        <label>
+          Ghi chú gửi ứng viên (không bắt buộc)
+          <textarea rows={3} value={candidateMessage} onChange={(event) => setCandidateMessage(event.target.value)} />
+        </label>
+        <small className="ats-field-help">Nội dung này sẽ được gửi cho ứng viên và hiển thị trong lịch sử ứng tuyển.</small>
+        <div className="ats-modal-actions">
+          <button className="btn-ghost" type="button" onClick={onClose} disabled={busy}>Hủy</button>
+          <button className="btn-primary" disabled={busy}>
+            {busy ? "Đang gửi..." : "Gửi đề xuất"}
           </button>
         </div>
       </form>
@@ -664,14 +1051,22 @@ function CandidateDetailModal({ application, onClose }) {
                   <time>{formatDateTime(application.created_at)}</time>
                   <strong>Đã ứng tuyển</strong>
                 </li>
-                {history.map((item) => (
-                  <li key={item.id}>
-                    <time>{formatDateTime(item.changed_at)}</time>
-                    <strong>{STATUS_LABELS[item.old_status]} → {STATUS_LABELS[item.new_status]}</strong>
-                    <span>Người thực hiện: {item.changed_by_name || `#${item.changed_by}`}</span>
-                    {item.reason && <p>{item.reason}</p>}
-                  </li>
-                ))}
+                {history.map((item) => {
+                  const messageOnly = item.old_status === item.new_status;
+                  return (
+                    <li key={item.id}>
+                      <time>{formatDateTime(item.changed_at)}</time>
+                      <strong>
+                        {messageOnly
+                          ? `${STATUS_LABELS[item.new_status]} · Lời nhắn`
+                          : `${STATUS_LABELS[item.old_status]} → ${STATUS_LABELS[item.new_status]}`}
+                      </strong>
+                      <span>Người thực hiện: {item.changed_by_name || `#${item.changed_by}`}</span>
+                      {item.reason && <p>Ghi chú nội bộ: {item.reason}</p>}
+                      {item.candidate_message && <p className="ats-candidate-message">Gửi ứng viên: {item.candidate_message}</p>}
+                    </li>
+                  );
+                })}
               </ol>
             )}
             <Alert type="success">{message}</Alert>
@@ -680,13 +1075,64 @@ function CandidateDetailModal({ application, onClose }) {
                 <button className="btn-ghost" type="button" onClick={() => setForm(form === "interview" ? "" : "interview")}>Tạo lịch phỏng vấn</button>
               )}
               <button className="btn-ghost" type="button" onClick={() => setForm(form === "evaluation" ? "" : "evaluation")}>Đánh giá ứng viên</button>
+              <button className="btn-ghost" type="button" onClick={() => setForm(form === "message" ? "" : "message")}>Gửi lời nhắn</button>
             </div>
             {form === "interview" && <ScheduleInterviewForm applicationId={application.id} onDone={() => { setForm(""); setMessage("Đã tạo lịch phỏng vấn."); }} />}
             {form === "evaluation" && <EvaluateForm applicationId={application.id} onDone={() => { setForm(""); setMessage("Đã lưu đánh giá ứng viên."); }} />}
+            {form === "message" && (
+              <ApplicationMessageForm
+                applicationId={application.id}
+                onDone={(item) => {
+                  setHistory((current) => [...current, item]);
+                  setForm("");
+                  setMessage("Đã gửi lời nhắn cho ứng viên.");
+                }}
+              />
+            )}
           </section>
         </div>
       </section>
     </div>
+  );
+}
+
+function ApplicationMessageForm({ applicationId, onDone }) {
+  const [candidateMessage, setCandidateMessage] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function submit(event) {
+    event.preventDefault();
+    if (!candidateMessage.trim()) return;
+    setBusy(true);
+    setError("");
+    try {
+      const item = await api.sendApplicationMessage(applicationId, candidateMessage.trim());
+      onDone(item);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form className="inline-form" onSubmit={submit}>
+      <Alert>{error}</Alert>
+      <label htmlFor={`candidate-message-${applicationId}`}>Ghi chú gửi ứng viên</label>
+      <textarea
+        id={`candidate-message-${applicationId}`}
+        rows={4}
+        required
+        value={candidateMessage}
+        onChange={(event) => setCandidateMessage(event.target.value)}
+        placeholder="Nhập lời nhắn dành cho ứng viên"
+      />
+      <small className="ats-field-help">Nội dung này không làm thay đổi trạng thái ứng tuyển.</small>
+      <button className="btn-primary" disabled={busy || !candidateMessage.trim()}>
+        {busy ? "Đang gửi..." : "Gửi lời nhắn"}
+      </button>
+    </form>
   );
 }
 
@@ -797,39 +1243,275 @@ function EvaluateForm({ applicationId, onDone }) {
 
 function InterviewList() {
   const [items, setItems] = useState([]);
+  const [proposals, setProposals] = useState([]);
+  const [filter, setFilter] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [updating, setUpdating] = useState(null);
   const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
 
-  function load() {
-    api.myInterviews().then(setItems).catch((e) => setError(e.message));
+  async function load(selectDefault = false) {
+    setError("");
+    try {
+      const [interviews, pendingProposals] = await Promise.all([
+        api.myInterviews(),
+        api.recruiterInterviewProposals(),
+      ]);
+      setItems(interviews || []);
+      setProposals(pendingProposals || []);
+      if (selectDefault) setFilter(pendingProposals?.length ? "pending" : "scheduled");
+    } catch (e) {
+      setError(e.message);
+    }
   }
-  useEffect(load, []);
+
+  useEffect(() => {
+    load(true).finally(() => setLoading(false));
+  }, []);
 
   async function setStatus(id, status) {
-    await api.updateInterviewStatus(id, status);
-    load();
+    setUpdating({ id, status });
+    setError("");
+    setMessage("");
+    try {
+      await api.updateInterviewStatus(id, status);
+      await load();
+      setMessage(status === "completed" ? "Đã đánh dấu lịch phỏng vấn hoàn tất." : "Đã hủy lịch phỏng vấn.");
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setUpdating(null);
+    }
   }
 
-  if (error) return <Alert>{error}</Alert>;
-  if (items.length === 0) return <EmptyState text="Chưa có lịch phỏng vấn nào." />;
+  const counts = {
+    pending: proposals.length,
+    scheduled: items.filter((item) => item.status === "scheduled").length,
+    completed: items.filter((item) => item.status === "completed").length,
+    cancelled: items.filter((item) => item.status === "cancelled").length,
+  };
+  const filteredItems = items
+    .filter((item) => item.status === filter)
+    .sort((a, b) => new Date(a.scheduled_at) - new Date(b.scheduled_at));
+  const filters = [
+    ["pending", "Chờ xác nhận", Clock3],
+    ["scheduled", "Sắp tới", CalendarDays],
+    ["completed", "Hoàn tất", CheckCircle2],
+    ["cancelled", "Đã hủy", XCircle],
+  ];
+  const visibleCount = filter === "pending" ? proposals.length : filteredItems.length;
 
   return (
-    <div className="grid grid-2">
-      {items.map((i) => (
-        <Card key={i.id} title={`${i.candidate_name} — ${i.job_title}`} subtitle={new Date(i.scheduled_at).toLocaleString()}>
-          <p className="job-meta">
-            {i.mode === "online" ? "Trực tuyến" : "Trực tiếp"} · {i.duration_minutes} phút · {i.location || "Chưa cập nhật"}
-          </p>
-          {i.notes && <p className="job-meta">{i.notes}</p>}
-          <div className="form-actions">
-            <button className="btn-ghost" onClick={() => setStatus(i.id, "completed")}>
-              Đánh dấu hoàn tất
-            </button>
-            <button className="btn-ghost" onClick={() => setStatus(i.id, "cancelled")}>
-              Hủy lịch
-            </button>
+    <div className="recruiter-interviews-page">
+      <section className="recruiter-interviews-hero">
+        <div>
+          <h1>Lịch phỏng vấn</h1>
+          <p>Theo dõi lịch hẹn, xác nhận thời gian phỏng vấn và quản lý các buổi phỏng vấn với ứng viên.</p>
+        </div>
+        <span className="recruiter-interviews-hero-icon" aria-hidden="true">
+          <CalendarDays />
+          <Clock3 />
+        </span>
+      </section>
+
+      <Alert type="success">{message}</Alert>
+      <Alert>{error}</Alert>
+
+      {loading ? (
+        <Spinner />
+      ) : (
+        <>
+          <section className="recruiter-interview-summary" aria-label="Tổng quan lịch phỏng vấn">
+            <InterviewSummaryCard icon={Clock3} label="Chờ ứng viên xác nhận" value={counts.pending} tone="amber" testId="interview-pending-count" />
+            <InterviewSummaryCard icon={CalendarDays} label="Sắp tới" value={counts.scheduled} tone="blue" testId="interview-scheduled-count" />
+            <InterviewSummaryCard icon={CheckCircle2} label="Hoàn tất" value={counts.completed} tone="green" testId="interview-completed-count" />
+            <InterviewSummaryCard icon={XCircle} label="Đã hủy" value={counts.cancelled} tone="red" testId="interview-cancelled-count" />
+          </section>
+
+          <div className="recruiter-interview-filters" aria-label="Lọc lịch phỏng vấn">
+            {filters.map(([status, label, Icon]) => (
+              <button
+                key={status}
+                type="button"
+                className={filter === status ? "is-active" : ""}
+                aria-pressed={filter === status}
+                onClick={() => setFilter(status)}
+              >
+                <Icon aria-hidden="true" /> {label} ({counts[status]})
+              </button>
+            ))}
           </div>
-        </Card>
-      ))}
+
+          <div className="recruiter-interview-layout">
+            <main className="recruiter-interview-list" aria-live="polite">
+              {visibleCount === 0 ? (
+                <div className="recruiter-interview-empty">
+                  <CalendarDays aria-hidden="true" />
+                  <p>{INTERVIEW_EMPTY_LABELS[filter] || "Chưa có lịch phỏng vấn"}</p>
+                </div>
+              ) : filter === "pending" ? (
+                proposals.map((proposal) => <RecruiterProposalCard key={proposal.id} proposal={proposal} />)
+              ) : (
+                filteredItems.map((interview) => (
+                  <InterviewCard
+                    key={interview.id}
+                    interview={interview}
+                    updating={updating?.id === interview.id ? updating.status : ""}
+                    onStatusChange={setStatus}
+                  />
+                ))
+              )}
+            </main>
+            <InterviewGuide />
+          </div>
+        </>
+      )}
     </div>
   );
+}
+
+function InterviewSummaryCard({ icon: Icon, label, value, tone, testId }) {
+  return (
+    <article className={`recruiter-interview-summary-card ${tone}`}>
+      <span aria-hidden="true"><Icon /></span>
+      <div><h2>{label}</h2><strong data-testid={testId}>{value}</strong></div>
+    </article>
+  );
+}
+
+const INTERVIEW_STATUS_LABELS = {
+  scheduled: "Sắp tới",
+  completed: "Hoàn tất",
+  cancelled: "Đã hủy",
+};
+
+const INTERVIEW_EMPTY_LABELS = {
+  pending: "Không có lời mời nào đang chờ ứng viên xác nhận.",
+  scheduled: "Chưa có lịch phỏng vấn sắp tới.",
+  completed: "Chưa có lịch phỏng vấn hoàn tất.",
+  cancelled: "Chưa có lịch phỏng vấn đã hủy.",
+};
+
+function RecruiterProposalCard({ proposal }) {
+  const options = [...(proposal.options || [])].sort((a, b) => new Date(a.scheduled_at) - new Date(b.scheduled_at));
+  return (
+    <article className="recruiter-proposal-card" data-testid={`recruiter-proposal-${proposal.id}`}>
+      <header>
+        <CandidateHeading name={proposal.candidate_name} job={proposal.job_title} />
+        <span className="recruiter-proposal-status">Chờ ứng viên chọn lịch</span>
+      </header>
+      <div className="recruiter-proposal-meta">
+        {proposal.company_name && <p><Building2 aria-hidden="true" />{proposal.company_name}</p>}
+        <p><Video aria-hidden="true" />Hình thức: {proposal.mode === "online" ? "Trực tuyến" : "Trực tiếp"}</p>
+        <p><Clock3 aria-hidden="true" />Thời lượng: {proposal.duration_minutes} phút</p>
+        {proposal.location && <ProposalLocation location={proposal.location} />}
+      </div>
+      {proposal.notes && <p className="recruiter-proposal-notes"><FileText aria-hidden="true" />{proposal.notes}</p>}
+      <div className="recruiter-proposal-times" aria-label="Ba mốc thời gian đã đề xuất">
+        {options.map((option) => {
+          const time = interviewOptionParts(option.scheduled_at, proposal.duration_minutes);
+          return (
+            <div key={option.id} className="recruiter-proposal-time">
+              <CalendarDays aria-hidden="true" />
+              <span><strong>{time.date}</strong><small>{time.range}</small></span>
+            </div>
+          );
+        })}
+      </div>
+      <p className="recruiter-proposal-waiting">
+        <Clock3 aria-hidden="true" />
+        Đang chờ ứng viên lựa chọn một trong ba mốc thời gian đã đề xuất.
+      </p>
+    </article>
+  );
+}
+
+function ProposalLocation({ location }) {
+  const isLink = /^https?:\/\//i.test(location);
+  return <p><MapPin aria-hidden="true" />{isLink ? <a href={location} target="_blank" rel="noreferrer">{location}</a> : location}</p>;
+}
+
+function CandidateHeading({ name, job }) {
+  return (
+    <div className="recruiter-interview-person">
+      <span aria-hidden="true">{initials(name)}</span>
+      <div><h2>{name || "Ứng viên"}</h2><p>{job || "Vị trí tuyển dụng"}</p></div>
+    </div>
+  );
+}
+
+function InterviewCard({ interview, updating, onStatusChange }) {
+  const locationIsLink = /^https?:\/\//i.test(interview.location || "");
+  return (
+    <article className="recruiter-interview-card" data-testid={`interview-${interview.id}`}>
+      <header>
+        <CandidateHeading name={interview.candidate_name} job={interview.job_title} />
+        <span className={`recruiter-interview-status ${interview.status}`}>
+          {INTERVIEW_STATUS_LABELS[interview.status] || interview.status}
+        </span>
+      </header>
+      <div className="recruiter-interview-details">
+        {interview.scheduled_at && <p><CalendarDays aria-hidden="true" /><time dateTime={interview.scheduled_at}>{formatDateTime(interview.scheduled_at)}</time></p>}
+        {interview.mode && <p><Video aria-hidden="true" /><span>Hình thức: {interview.mode === "online" ? "Trực tuyến" : "Trực tiếp"}</span></p>}
+        {interview.duration_minutes != null && <p><Clock3 aria-hidden="true" /><span>Thời lượng: {interview.duration_minutes} phút</span></p>}
+        {interview.location && (
+          <p><MapPin aria-hidden="true" /><span>Địa điểm: {locationIsLink ? <a href={interview.location} target="_blank" rel="noreferrer">{interview.location}</a> : interview.location}</span></p>
+        )}
+        {interview.notes && <p><FileText aria-hidden="true" /><span>Ghi chú: {interview.notes}</span></p>}
+      </div>
+      {interview.status === "scheduled" && (
+        <div className="recruiter-interview-actions">
+          <button type="button" className="complete" disabled={Boolean(updating)} onClick={() => onStatusChange(interview.id, "completed")}>
+            <CheckCircle2 aria-hidden="true" />
+            {updating === "completed" ? "Đang cập nhật..." : "Đánh dấu hoàn tất"}
+          </button>
+          <button type="button" className="cancel" disabled={Boolean(updating)} onClick={() => onStatusChange(interview.id, "cancelled")}>
+            <XCircle aria-hidden="true" />
+            {updating === "cancelled" ? "Đang hủy..." : "Hủy lịch"}
+          </button>
+        </div>
+      )}
+    </article>
+  );
+}
+
+function InterviewGuide() {
+  const steps = [
+    ["Nhà tuyển dụng đề xuất 3 mốc thời gian", "Đề xuất các khung giờ phù hợp."],
+    ["Ứng viên chọn thời gian phù hợp", "Ứng viên xem và chọn 1 trong 3 mốc giờ."],
+    ["Hệ thống xác nhận lịch phỏng vấn", "Lịch được tạo tự động sau khi ứng viên chọn."],
+    ["Hai bên cùng theo dõi lịch", "Lịch đã xác nhận hiển thị cho cả hai vai trò."],
+  ];
+  return (
+    <aside className="recruiter-interview-aside">
+      <section className="recruiter-interview-guide">
+        <header><span aria-hidden="true"><ListChecks /></span><div><h2>Quy trình đặt lịch</h2><p>Bốn bước để xếp lịch phỏng vấn.</p></div></header>
+        <ol>
+          {steps.map(([title, text], index) => (
+            <li key={title}><span>{index + 1}</span><div><strong>{title}</strong><p>{text}</p></div></li>
+          ))}
+        </ol>
+      </section>
+      <section className="recruiter-interview-tips">
+        <header><span aria-hidden="true"><Sparkles /></span><div><h2>Mẹo</h2><p>Một số gợi ý đặt lịch hiệu quả.</p></div></header>
+        <ul>
+          <li><CheckCircle2 aria-hidden="true" /><span><strong>Đề xuất các mốc giờ linh hoạt</strong>Giúp ứng viên dễ sắp xếp thời gian.</span></li>
+          <li><CheckCircle2 aria-hidden="true" /><span><strong>Chọn khung giờ làm việc</strong>Ưu tiên các khung giờ trong giờ hành chính.</span></li>
+          <li><CheckCircle2 aria-hidden="true" /><span><strong>Xác nhận sớm</strong>Theo dõi thông báo khi ứng viên đã chọn.</span></li>
+        </ul>
+      </section>
+    </aside>
+  );
+}
+
+function interviewOptionParts(value, durationMinutes) {
+  const start = new Date(value);
+  const end = new Date(start.getTime() + Number(durationMinutes || 0) * 60000);
+  const date = new Intl.DateTimeFormat("vi-VN", { weekday: "long", day: "2-digit", month: "2-digit", year: "numeric" }).format(start);
+  const formatter = new Intl.DateTimeFormat("vi-VN", { hour: "2-digit", minute: "2-digit" });
+  return { date, range: `${formatter.format(start)} – ${formatter.format(end)}` };
+}
+
+function initials(name = "") {
+  return name.trim().split(/\s+/).filter(Boolean).slice(-2).map((part) => part[0]).join("").toUpperCase() || "UV";
 }

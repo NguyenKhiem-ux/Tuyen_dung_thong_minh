@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, ConfigDict
+from pydantic import BaseModel, EmailStr, ConfigDict, Field
 from typing import Literal, Optional
 from datetime import datetime
 
@@ -122,6 +122,11 @@ class ApplicationOut(BaseModel):
 class ApplicationStatusUpdateIn(BaseModel):
     status: Literal["applied", "screening", "interview", "offer", "hired", "rejected"]
     reason: Optional[str] = None
+    candidate_message: Optional[str] = Field(default=None, max_length=4000)
+
+
+class ApplicationMessageCreate(BaseModel):
+    candidate_message: str = Field(min_length=1, max_length=4000)
 
 
 class ApplicationStatusHistoryOut(BaseModel):
@@ -132,6 +137,7 @@ class ApplicationStatusHistoryOut(BaseModel):
     changed_by: int
     changed_by_name: Optional[str] = None
     reason: Optional[str] = None
+    candidate_message: Optional[str] = None
     changed_at: datetime
 
 
@@ -163,16 +169,59 @@ class InterviewStatusUpdateIn(BaseModel):
     status: Literal["scheduled", "completed", "cancelled"]
 
 
+class InterviewProposalCreate(BaseModel):
+    application_id: int
+    proposed_times: list[datetime] = Field(min_length=3, max_length=3)
+    duration_minutes: int = Field(default=45, ge=15, le=480)
+    mode: Literal["online", "onsite"] = "online"
+    location: str = ""
+    notes: str = ""
+    candidate_message: Optional[str] = Field(default=None, max_length=4000)
+
+
+class InterviewProposalConfirmIn(BaseModel):
+    option_id: int
+
+
+class InterviewTimeOptionOut(BaseModel):
+    id: int
+    scheduled_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
+class InterviewProposalOut(BaseModel):
+    id: int
+    application_id: int
+    recruiter_id: int
+    status: Literal["pending", "confirmed", "cancelled"]
+    selected_option_id: Optional[int] = None
+    duration_minutes: int
+    mode: str
+    location: str
+    notes: str
+    job_title: Optional[str] = None
+    company_name: Optional[str] = None
+    candidate_name: Optional[str] = None
+    options: list[InterviewTimeOptionOut]
+    created_at: datetime
+    confirmed_at: Optional[datetime] = None
+    model_config = ConfigDict(from_attributes=True)
+
+
 # ---------- Notification ----------
 class NotificationOut(BaseModel):
     id: int
     user_id: int
+    application_id: Optional[int] = None
     type: Literal[
         "application_received",
         "application_submitted",
         "application_status_changed",
+        "application_message_received",
         "interview_scheduled",
         "interview_updated",
+        "interview_time_selection_requested",
+        "interview_time_confirmed",
     ]
     title: str
     message: str

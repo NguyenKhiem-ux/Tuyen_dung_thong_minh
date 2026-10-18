@@ -198,14 +198,17 @@
   color: #007d3b;
   background: #e8f8ef;
 }
-.recruiter-nav {
+.recruiter-nav,
+.admin-nav {
   flex: 1;
   justify-content: center;
 }
-.recruiter-nav a {
+.recruiter-nav a,
+.admin-nav a {
   border-radius: 11px;
 }
-.recruiter-nav a[aria-current="page"] {
+.recruiter-nav a[aria-current="page"],
+.admin-nav a[aria-current="page"] {
   color: #007d3b;
   background: #e8f8ef;
 }
@@ -1580,7 +1583,8 @@
     flex-direction: column;
     align-items: stretch;
   }
-  .recruiter-nav {
+  .recruiter-nav,
+  .admin-nav {
     justify-content: flex-start;
   }
   .site-nav a {

@@ -1,31 +1,38 @@
 import React, { useEffect, useState } from "react";
+import { BriefcaseBusiness, Building2, FileText, LayoutDashboard, Users as UsersIcon } from "lucide-react";
 import api from "../api.js";
-import { Card, Tabs, EmptyState, Alert, Spinner } from "./Common.jsx";
+import { Card, EmptyState, Alert, Spinner } from "./Common.jsx";
 
 const ROLE_LABELS = { candidate: "Ứng viên", recruiter: "Nhà tuyển dụng", admin: "Quản trị viên" };
+const ROLE_ORDER = ["admin", "recruiter", "candidate"];
+const ROLE_COLORS = { admin: "#f59e0b", recruiter: "#00b14f", candidate: "#2878f0" };
+const APPLICATION_STATUSES = [
+  ["applied", "Đã ứng tuyển", "#2878f0"],
+  ["screening", "Sàng lọc", "#f59e0b"],
+  ["interview", "Phỏng vấn", "#8b5cf6"],
+  ["offer", "Đề nghị", "#a855f7"],
+  ["hired", "Đã tuyển", "#00b14f"],
+  ["rejected", "Đã từ chối", "#ef4444"],
+];
 
-export default function AdminDashboard() {
-  const [tab, setTab] = useState("overview");
-
+export default function AdminDashboard({ activeTab = "overview" }) {
   return (
-    <div className="dashboard">
-      <h2 className="dashboard-title">Bảng điều khiển Quản trị viên</h2>
-      <Tabs
-        active={tab}
-        onChange={setTab}
-        tabs={[
-          { key: "overview", label: "Thống kê hệ thống" },
-          { key: "users", label: "Người dùng" },
-          { key: "jobs", label: "Tin tuyển dụng" },
-          { key: "companies", label: "Công ty" },
-        ]}
-      />
-      {tab === "overview" && <Overview />}
-      {tab === "users" && <Users />}
-      {tab === "jobs" && <Jobs />}
-      {tab === "companies" && <Companies />}
+    <div className="dashboard admin-dashboard" data-active-tab={activeTab}>
+      {activeTab === "overview" && <Overview />}
+      {activeTab === "users" && <Users />}
+      {activeTab === "jobs" && <Jobs />}
+      {activeTab === "companies" && <Companies />}
     </div>
   );
+}
+
+function percentage(value, total) {
+  if (!total) return 0;
+  return Math.min(100, Math.max(0, (value / total) * 100));
+}
+
+function formatPercentage(value) {
+  return new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 1 }).format(value);
 }
 
 function Overview() {
@@ -36,45 +43,168 @@ function Overview() {
     api.adminStats().then(setStats).catch((e) => setError(e.message));
   }, []);
 
-  if (error) return <Alert>{error}</Alert>;
-  if (!stats) return <Spinner />;
+  return (
+    <div className="admin-overview">
+      <section className="admin-overview-hero">
+        <div>
+          <p className="admin-overview-eyebrow">Quản trị nền tảng</p>
+          <h1>Tổng quan hệ thống</h1>
+          <p>Thống kê hoạt động và tình hình tuyển dụng trên toàn nền tảng.</p>
+        </div>
+        <span className="admin-overview-hero-icon" aria-hidden="true">
+          <LayoutDashboard />
+        </span>
+      </section>
+
+      {error && <Alert>{error}</Alert>}
+      {!error && !stats && <Spinner />}
+      {stats && (
+        <>
+          <section className="admin-metric-grid" aria-label="Chỉ số tổng quan hệ thống">
+            <MetricCard
+              icon={UsersIcon}
+              label="Tổng người dùng"
+              value={stats.total_users}
+              tone="blue"
+              testId="admin-total-users"
+            />
+            <MetricCard
+              icon={BriefcaseBusiness}
+              label="Tổng tin tuyển dụng"
+              value={stats.total_jobs}
+              detail={`${stats.open_jobs ?? 0} đang mở`}
+              tone="green"
+              testId="admin-total-jobs"
+            />
+            <MetricCard
+              icon={Building2}
+              label="Tổng công ty"
+              value={stats.total_companies}
+              tone="amber"
+              testId="admin-total-companies"
+            />
+            <MetricCard
+              icon={FileText}
+              label="Tổng đơn ứng tuyển"
+              value={stats.total_applications}
+              tone="purple"
+              testId="admin-total-applications"
+            />
+          </section>
+
+          <section className="admin-chart-grid">
+            <RoleDistribution stats={stats} />
+            <ApplicationDistribution stats={stats} />
+          </section>
+        </>
+      )}
+    </div>
+  );
+}
+
+function MetricCard({ icon: Icon, label, value, detail, tone, testId }) {
+  return (
+    <article className={`admin-metric-card admin-metric-card-${tone}`}>
+      <span className="admin-metric-icon" aria-hidden="true">
+        <Icon />
+      </span>
+      <div>
+        <p>{label}</p>
+        <strong data-testid={testId}>{value}</strong>
+        {detail && <span>{detail}</span>}
+      </div>
+    </article>
+  );
+}
+
+function RoleDistribution({ stats }) {
+  const total = Number(stats.total_users) || 0;
+  const roleData = stats.users_by_role || {};
 
   return (
-    <div className="grid grid-4">
-      <Card title="Tổng người dùng">
-        <div className="stat-number">{stats.total_users}</div>
-      </Card>
-      <Card title="Tổng tin tuyển dụng">
-        <div className="stat-number">{stats.total_jobs}</div>
-        <p className="job-meta">{stats.open_jobs} đang mở</p>
-      </Card>
-      <Card title="Tổng công ty">
-        <div className="stat-number">{stats.total_companies}</div>
-      </Card>
-      <Card title="Tổng đơn ứng tuyển">
-        <div className="stat-number">{stats.total_applications}</div>
-      </Card>
-      <Card title="Người dùng theo vai trò" className="span-2">
-        {Object.entries(stats.users_by_role).map(([k, v]) => (
-          <div key={k} className="status-row">
-            <span>{ROLE_LABELS[k] || k}</span>
-            <strong>{v}</strong>
-          </div>
-        ))}
-      </Card>
-      <Card title="Đơn ứng tuyển theo trạng thái" className="span-2">
-        {Object.keys(stats.applications_by_status).length === 0 ? (
-          <EmptyState text="Chưa có dữ liệu." />
-        ) : (
-          Object.entries(stats.applications_by_status).map(([k, v]) => (
-            <div key={k} className="status-row">
-              <span>{k}</span>
-              <strong>{v}</strong>
+    <article className="admin-chart-card" aria-labelledby="admin-role-title">
+      <header>
+        <span className="admin-chart-icon admin-chart-icon-blue" aria-hidden="true">
+          <UsersIcon />
+        </span>
+        <div>
+          <h2 id="admin-role-title">Người dùng theo vai trò</h2>
+          <p>Cơ cấu tài khoản đang có trên hệ thống.</p>
+        </div>
+      </header>
+      <div className="admin-distribution-list">
+        {ROLE_ORDER.map((role) => {
+          const count = Number(roleData[role]) || 0;
+          const share = percentage(count, total);
+          return (
+            <div className="admin-distribution-row" key={role} data-testid={`admin-role-${role}`}>
+              <div className="admin-distribution-label">
+                <span className="admin-chart-dot" style={{ background: ROLE_COLORS[role] }} />
+                <span>{ROLE_LABELS[role]}</span>
+                <strong>{count}</strong>
+                <em>{formatPercentage(share)}%</em>
+              </div>
+              <div
+                className="admin-distribution-track"
+                role="progressbar"
+                aria-label={`Tỷ lệ ${ROLE_LABELS[role]}`}
+                aria-valuemin="0"
+                aria-valuemax="100"
+                aria-valuenow={Math.round(share * 10) / 10}
+              >
+                <span style={{ background: ROLE_COLORS[role], width: `${share}%` }} />
+              </div>
             </div>
-          ))
-        )}
-      </Card>
-    </div>
+          );
+        })}
+      </div>
+    </article>
+  );
+}
+
+function ApplicationDistribution({ stats }) {
+  const statusData = stats.applications_by_status || {};
+  const total = APPLICATION_STATUSES.reduce((sum, [status]) => sum + (Number(statusData[status]) || 0), 0);
+
+  return (
+    <article className="admin-chart-card" aria-labelledby="admin-status-title">
+      <header>
+        <span className="admin-chart-icon admin-chart-icon-green" aria-hidden="true">
+          <FileText />
+        </span>
+        <div>
+          <h2 id="admin-status-title">Đơn ứng tuyển theo trạng thái</h2>
+          <p>Phân bổ hồ sơ theo từng giai đoạn ATS.</p>
+        </div>
+        <strong className="admin-chart-total">{stats.total_applications}</strong>
+      </header>
+      <div className="admin-distribution-list admin-status-list">
+        {APPLICATION_STATUSES.map(([status, label, color]) => {
+          const count = Number(statusData[status]) || 0;
+          const share = percentage(count, total);
+          return (
+            <div className="admin-distribution-row" key={status} data-testid={`admin-status-${status}`}>
+              <div className="admin-distribution-label">
+                <span className="admin-chart-dot" style={{ background: color }} />
+                <span>{label}</span>
+                <strong>{count}</strong>
+                <em>{formatPercentage(share)}%</em>
+              </div>
+              <div
+                className="admin-distribution-track"
+                role="progressbar"
+                aria-label={`Tỷ lệ ${label}`}
+                aria-valuemin="0"
+                aria-valuemax="100"
+                aria-valuenow={Math.round(share * 10) / 10}
+              >
+                <span style={{ background: color, width: `${share}%` }} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </article>
   );
 }
 

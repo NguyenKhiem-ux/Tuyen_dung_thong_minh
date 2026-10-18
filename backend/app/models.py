@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import String, Text, Integer, Float, Boolean, ForeignKey, DateTime
+from sqlalchemy import String, Text, Integer, Float, Boolean, ForeignKey, DateTime, Index, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .database import Base
 
@@ -102,6 +102,11 @@ class Application(Base):
         cascade="all, delete-orphan",
         order_by="ApplicationStatusHistory.changed_at",
     )
+    interview_proposals = relationship(
+        "InterviewProposal",
+        back_populates="application",
+        cascade="all, delete-orphan",
+    )
 
 
 class ApplicationStatusHistory(Base):
@@ -112,6 +117,7 @@ class ApplicationStatusHistory(Base):
     new_status: Mapped[str] = mapped_column(String(30))
     changed_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    candidate_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     changed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     application = relationship("Application", back_populates="status_history")
@@ -134,10 +140,55 @@ class Interview(Base):
     application = relationship("Application", back_populates="interviews")
 
 
+class InterviewProposal(Base):
+    __tablename__ = "interview_proposals"
+    __table_args__ = (
+        Index(
+            "uq_interview_proposals_pending_application",
+            "application_id",
+            unique=True,
+            sqlite_where=text("status = 'pending'"),
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    application_id: Mapped[int] = mapped_column(ForeignKey("applications.id"), index=True)
+    recruiter_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    status: Mapped[str] = mapped_column(String(30), default="pending")
+    selected_option_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    duration_minutes: Mapped[int] = mapped_column(Integer, default=45)
+    mode: Mapped[str] = mapped_column(String(30), default="online")
+    location: Mapped[str] = mapped_column(String(255), default="")
+    notes: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    application = relationship("Application", back_populates="interview_proposals")
+    recruiter = relationship("User")
+    options = relationship(
+        "InterviewTimeOption",
+        back_populates="proposal",
+        cascade="all, delete-orphan",
+        order_by="InterviewTimeOption.scheduled_at",
+    )
+
+
+class InterviewTimeOption(Base):
+    __tablename__ = "interview_time_options"
+    __table_args__ = (UniqueConstraint("proposal_id", "scheduled_at", name="uq_interview_proposal_time"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    proposal_id: Mapped[int] = mapped_column(ForeignKey("interview_proposals.id"), index=True)
+    scheduled_at: Mapped[datetime] = mapped_column(DateTime)
+
+    proposal = relationship("InterviewProposal", back_populates="options")
+
+
 class Notification(Base):
     __tablename__ = "notifications"
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    application_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     type: Mapped[str] = mapped_column(String(50))
     title: Mapped[str] = mapped_column(String(255))
     message: Mapped[str] = mapped_column(Text)

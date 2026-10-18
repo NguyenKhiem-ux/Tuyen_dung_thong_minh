@@ -38,10 +38,21 @@ const RECRUITER_NAV = [
   ["applications", "Ứng viên & ATS", Users],
   ["interviews", "Lịch phỏng vấn", CalendarDays],
 ];
+const ADMIN_NAV = [
+  ["overview", "Thống kê hệ thống", LayoutDashboard],
+  ["users", "Người dùng", Users],
+  ["jobs", "Tin tuyển dụng", BriefcaseBusiness],
+  ["companies", "Công ty", Building2],
+];
 
-export function Brand() {
+export function Brand({ href = "/", onClick }) {
   return (
-    <Link href="/" className="site-brand" aria-label="Smart Recruitment AI - Trang chủ">
+    <Link
+      href={href}
+      className="site-brand"
+      aria-label={href === "/" ? "Smart Recruitment AI - Trang chủ" : "Smart Recruitment AI - Bảng điều khiển quản trị"}
+      onClick={onClick}
+    >
       <span className="site-logo">SR</span>
       <span>
         Smart Recruitment <strong>AI</strong>
@@ -57,6 +68,8 @@ export default function Navbar({
   path,
   recruiterTab = "overview",
   onRecruiterTabChange = () => {},
+  adminTab = "overview",
+  onAdminTabChange = () => {},
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [notifications, setNotifications] = useState([]);
@@ -67,9 +80,14 @@ export default function Navbar({
   const header = useRef(null);
   const isCandidate = user?.role === "candidate";
   const isRecruiter = user?.role === "recruiter";
+  const isAdmin = user?.role === "admin";
+  const isDashboardUser = isRecruiter || isAdmin;
+  const activeDashboardTab = isAdmin ? adminTab : recruiterTab;
+  const dashboardRoute = isAdmin ? "/admin/dashboard" : "/recruiter/dashboard";
+  const changeDashboardTab = isAdmin ? onAdminTabChange : onRecruiterTabChange;
   const canReceiveNotifications = user && (isCandidate || user.role === "recruiter");
-  const links = isRecruiter
-    ? RECRUITER_NAV.map(([tab, label, Icon]) => ["/recruiter/dashboard", label, Icon, tab])
+  const links = isDashboardUser
+    ? (isAdmin ? ADMIN_NAV : RECRUITER_NAV).map(([tab, label, Icon]) => [dashboardRoute, label, Icon, tab])
     : [
         ...PUBLIC_NAV,
         ...(isCandidate
@@ -159,8 +177,14 @@ export default function Navbar({
 
   function notificationHref(notification) {
     if (notification.type === "application_received") return "/recruiter/dashboard";
-    if (notification.type.startsWith("interview_")) return "/candidate/interviews";
-    if (notification.type.startsWith("application_")) return "/candidate/applications";
+    if (notification.type.startsWith("interview_")) {
+      return isRecruiter ? "/recruiter/dashboard" : "/candidate/interviews";
+    }
+    if (notification.type.startsWith("application_")) {
+      return notification.application_id
+        ? `/candidate/applications?application=${notification.application_id}`
+        : "/candidate/applications";
+    }
     return dashboardPath(user);
   }
 
@@ -181,7 +205,13 @@ export default function Navbar({
       }}
     >
       <div className="site-container site-header-inner">
-        <Brand />
+        <Brand
+          href={isAdmin ? "/admin/dashboard" : "/"}
+          onClick={() => {
+            if (isAdmin) onAdminTabChange("overview");
+            closeMenus();
+          }}
+        />
         <button
           className="icon-button mobile-menu-toggle"
           type="button"
@@ -193,18 +223,21 @@ export default function Navbar({
           {menuOpen ? <X /> : <Menu />}
         </button>
         <div className={`site-header-content ${menuOpen ? "is-open" : ""}`} id="site-navigation">
-          <nav className={`site-nav ${isRecruiter ? "recruiter-nav" : ""}`} aria-label="Điều hướng chính">
+          <nav
+            className={`site-nav ${isRecruiter ? "recruiter-nav" : ""} ${isAdmin ? "admin-nav" : ""}`}
+            aria-label="Điều hướng chính"
+          >
             {links.map(([href, label, Icon, tab]) => (
               <Link
                 key={tab || href}
                 href={href}
                 onClick={() => {
-                  if (tab) onRecruiterTabChange(tab);
+                  if (tab) changeDashboardTab(tab);
                   closeMenus();
                 }}
                 aria-current={
                   tab
-                    ? path === "/recruiter/dashboard" && tab === recruiterTab
+                    ? path === dashboardRoute && tab === activeDashboardTab
                       ? "page"
                       : undefined
                     : href === path || (href === "/jobs" && path.startsWith("/jobs/"))
@@ -322,6 +355,9 @@ export default function Navbar({
                           href={notificationHref(notification)}
                           onClick={() => {
                             markRead(notification);
+                            if (isRecruiter && notification.type === "interview_time_confirmed") {
+                              onRecruiterTabChange("interviews");
+                            }
                             closeMenus();
                           }}
                           style={{ color: "inherit", display: "block", textDecoration: "none" }}
@@ -375,7 +411,7 @@ export default function Navbar({
                   <Link
                     href={dashboardPath(user)}
                     onClick={() => {
-                      if (isRecruiter) onRecruiterTabChange("overview");
+                      if (isDashboardUser) changeDashboardTab("overview");
                       closeMenus();
                     }}
                   >
@@ -409,7 +445,7 @@ export default function Navbar({
                 <Link
                   href={dashboardPath(user)}
                   onClick={() => {
-                    if (isRecruiter) onRecruiterTabChange("overview");
+                    if (isDashboardUser) changeDashboardTab("overview");
                     closeMenus();
                   }}
                 >

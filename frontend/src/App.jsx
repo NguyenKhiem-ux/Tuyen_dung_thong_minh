@@ -13,6 +13,7 @@ import "./public.css";
 export default function App() {
   const [user, setUser] = useState(null);
   const [recruiterTab, setRecruiterTab] = useState("overview");
+  const [adminTab, setAdminTab] = useState("overview");
   const location = useLocation();
   const path = location.pathname.replace(/\/+$/, "") || "/";
   const [loading, setLoading] = useState(true);
@@ -62,6 +63,7 @@ export default function App() {
     setStoredUser(null);
     setUser(null);
     setRecruiterTab("overview");
+    setAdminTab("overview");
     setError("");
     navigate("/", true);
   }
@@ -121,7 +123,7 @@ export default function App() {
           />
         )}
         {requiredRole === "recruiter" && <RecruiterDashboard activeTab={recruiterTab} />}
-        {requiredRole === "admin" && <AdminDashboard />}
+        {requiredRole === "admin" && <AdminDashboard activeTab={adminTab} />}
       </main>
     );
   else
@@ -143,6 +145,8 @@ export default function App() {
         path={routePath}
         recruiterTab={recruiterTab}
         onRecruiterTabChange={setRecruiterTab}
+        adminTab={adminTab}
+        onAdminTabChange={setAdminTab}
       />
       {content}
       {(path === "/" || path === "/jobs" || jobId) && <Footer user={user} />}
