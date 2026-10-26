@@ -125,9 +125,11 @@ test("admin header controls the API-backed system overview and existing sections
   await expect(page.locator(".admin-dashboard")).toHaveAttribute("data-active-tab", "users");
   await expect(usersLink).toHaveAttribute("aria-current", "page");
   await expect(page.getByText("Nguyễn Thị Vân", { exact: true })).toBeVisible();
-  await page.locator(".data-table select").selectOption("recruiter");
-  await expect(page.locator(".data-table select")).toHaveValue("recruiter");
+  await page.locator(".admin-users-table select").selectOption("recruiter");
+  await page.getByRole("dialog").locator("button.btn-primary").click();
+  await expect(page.locator(".admin-users-table select")).toHaveValue("recruiter");
   await page.getByRole("button", { name: "Khóa", exact: true }).click();
+  await page.getByRole("dialog").locator("button.btn-danger").click();
   await expect(page.getByRole("button", { name: "Mở khóa", exact: true })).toBeVisible();
 
   const jobsLink = page.locator(".admin-nav").getByRole("link", { name: "Tin tuyển dụng", exact: true });

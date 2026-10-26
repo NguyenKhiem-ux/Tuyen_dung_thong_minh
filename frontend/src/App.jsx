@@ -123,7 +123,7 @@ export default function App() {
           />
         )}
         {requiredRole === "recruiter" && <RecruiterDashboard activeTab={recruiterTab} />}
-        {requiredRole === "admin" && <AdminDashboard activeTab={adminTab} />}
+        {requiredRole === "admin" && <AdminDashboard activeTab={adminTab} currentUser={user} />}
       </main>
     );
   else

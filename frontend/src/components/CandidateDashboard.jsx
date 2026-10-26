@@ -1140,7 +1140,7 @@ function Recommendations() {
     api
       .recommendations(6)
       .then((d) => {
-        setItems(d);
+        setItems(Array.isArray(d) ? d : []);
         setLoaded(true);
       })
       .catch((e) => {
@@ -1149,39 +1149,178 @@ function Recommendations() {
       });
   }, []);
 
+  const rankedItems = [...items].sort((left, right) => number(right.final_score) - number(left.final_score));
+
   return (
     <div className="recommendations-page">
       <CandidateHero
-        title="Gợi ý AI"
-        description="Khám phá các công việc phù hợp dựa trên CV, kỹ năng và kinh nghiệm của bạn."
+        title="Gợi ý việc làm bằng AI"
+        description="Khám phá những công việc phù hợp nhất với CV, kỹ năng và kinh nghiệm của bạn."
       />
 
+      {loaded && !error && (
+        <section className="recommendations-summary" aria-label="Tóm tắt gợi ý việc làm">
+          <div>
+            <span className="recommendations-summary-icon" aria-hidden="true">
+              <Sparkles size={22} />
+            </span>
+            <p>
+              <strong>{rankedItems.length}</strong>
+              <span>công việc được gợi ý</span>
+            </p>
+          </div>
+          <p>
+            <BarChart3 size={18} aria-hidden="true" />
+            Xếp hạng theo mức độ phù hợp
+          </p>
+        </section>
+      )}
+
       {!loaded ? (
-        <Spinner />
+        <div className="recommendations-state">
+          <Spinner />
+        </div>
       ) : error ? (
         <Alert>{error}</Alert>
-      ) : items.length === 0 ? (
-        <EmptyState text="Chưa có gợi ý — hãy tải CV lên để nhận đề xuất từ AI." />
+      ) : rankedItems.length === 0 ? (
+        <div className="recommendations-state">
+          <EmptyState text="Chưa có gợi ý — hãy tải CV lên để nhận đề xuất từ AI." />
+        </div>
       ) : (
-        <div className="grid grid-2">
-          {items.map((item) => (
-            <Card
-              key={item.job.id}
-              title={item.job.title}
-              subtitle={`${item.job.company_name || "—"} · ${item.job.location}`}
-              right={<span className="badge score-badge">{formatPercent(item.final_score)} phù hợp</span>}
-            >
-              <p className="job-desc">{item.job.description}</p>
-              {item.missing_skills.length > 0 && (
-                <p className="job-meta missing-skills">
-                  <strong>Kỹ năng còn thiếu:</strong> {item.missing_skills.join(", ")}
-                </p>
-              )}
-              <p className="job-meta explanation">{item.explanation}</p>
-            </Card>
+        <div className="recommendations-grid">
+          {rankedItems.map((item) => (
+            <RecommendationCard key={item.job.id} item={item} />
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function RecommendationCard({ item }) {
+  const job = item.job || {};
+  const matchedSkills = Array.isArray(item.matched_skills) ? item.matched_skills.filter(Boolean) : [];
+  const missingSkills = Array.isArray(item.missing_skills) ? item.missing_skills.filter(Boolean) : [];
+  const score = Math.max(0, Math.min(100, number(item.final_score)));
+  const explanation = typeof item.explanation === "string" ? item.explanation.trim() : "";
+  const scoreBreakdown = [
+    ["Kỹ năng", item.skill_score, "green"],
+    ["Kinh nghiệm", item.experience_score, "blue"],
+    ["Ngữ nghĩa", item.semantic_score, "purple"],
+    ["Dự án", item.project_score, "amber"],
+  ].filter(([, value]) => value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value)));
+
+  return (
+    <article className="recommendation-card" data-testid={`recommendation-card-${job.id}`}>
+      <header className="recommendation-card-header">
+        <span className="recommendation-company-icon" aria-hidden="true">
+          <Building2 size={25} />
+        </span>
+        <div className="recommendation-job-heading">
+          <h2>{job.title || "Công việc phù hợp"}</h2>
+          <p>{job.company_name || "Chưa cập nhật công ty"}</p>
+          <div className="recommendation-job-meta">
+            <span>
+              <MapPin size={15} aria-hidden="true" />
+              {job.location || "Chưa cập nhật"}
+            </span>
+            {job.employment_type && (
+              <span>
+                <Briefcase size={15} aria-hidden="true" />
+                {job.employment_type}
+              </span>
+            )}
+          </div>
+        </div>
+        <div className="recommendation-match-score">
+          <strong>{formatPercent(item.final_score)}</strong>
+          <span>Mức độ phù hợp</span>
+        </div>
+      </header>
+
+      <div
+        className="recommendation-score-track"
+        role="progressbar"
+        aria-label={`Mức độ phù hợp với ${job.title || "công việc"}`}
+        aria-valuemin="0"
+        aria-valuemax="100"
+        aria-valuenow={score}
+      >
+        <span style={{ width: `${score}%` }} />
+      </div>
+
+      {job.description && <p className="recommendation-description">{job.description}</p>}
+
+      <div className="recommendation-skill-grid">
+        {matchedSkills.length > 0 && (
+          <section className="recommendation-skill-section recommendation-matched-skills">
+            <h3>Kỹ năng phù hợp</h3>
+            <div>
+              {matchedSkills.map((skill) => (
+                <span key={skill}>{skill}</span>
+              ))}
+            </div>
+          </section>
+        )}
+        <section className="recommendation-skill-section recommendation-missing-skills">
+          <h3>Kỹ năng cần bổ sung</h3>
+          {missingSkills.length > 0 ? (
+            <div>
+              {missingSkills.map((skill) => (
+                <span key={skill}>{skill}</span>
+              ))}
+            </div>
+          ) : (
+            <p>Không có kỹ năng cần bổ sung trong kết quả AI.</p>
+          )}
+        </section>
+      </div>
+
+      {scoreBreakdown.length > 0 && (
+        <section className="recommendation-analysis">
+          <h3>
+            <BarChart3 size={18} aria-hidden="true" />
+            Phân tích điểm AI
+          </h3>
+          <div className="recommendation-score-grid">
+            {scoreBreakdown.map(([label, value, tone]) => (
+              <RecommendationScore key={label} label={label} value={value} tone={tone} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {explanation && (
+        <details className="recommendation-explanation">
+          <summary>
+            <Info size={17} aria-hidden="true" />
+            Xem giải thích chi tiết từ AI
+          </summary>
+          <p>{explanation}</p>
+        </details>
+      )}
+
+      <div className="recommendation-card-footer">
+        <Link className="recommendation-detail-link" href={`/jobs/${job.id}`}>
+          Xem chi tiết công việc
+          <ExternalLink size={17} aria-hidden="true" />
+        </Link>
+      </div>
+    </article>
+  );
+}
+
+function RecommendationScore({ label, value, tone }) {
+  const score = Math.max(0, Math.min(100, Number(value)));
+  return (
+    <div className={`recommendation-score-row recommendation-score-${tone}`}>
+      <div>
+        <span>{label}</span>
+        <strong>{formatPercent(value)}</strong>
+      </div>
+      <span className="recommendation-score-small-track">
+        <span style={{ width: `${score}%` }} />
+      </span>
     </div>
   );
 }
