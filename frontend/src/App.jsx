@@ -77,6 +77,7 @@ export default function App() {
           ? "admin"
           : null;
   const authPage = path === "/login" || path === "/register";
+  const authRole = location.searchParams.get("role") === "recruiter" ? "recruiter" : "candidate";
   const jobId = path.match(/^\/jobs\/(\d+)$/)?.[1];
   let content;
   if (path === "/") content = <HomePage user={user} />;
@@ -93,8 +94,9 @@ export default function App() {
       <Redirect to={authDestination(user)} />
     ) : (
       <AuthForm
-        key={path}
+        key={`${path}${authRole}`}
         initialMode={path === "/register" ? "register" : "login"}
+        initialRole={authRole}
         onSuccess={handleAuthSuccess}
         error={error}
         setError={setError}

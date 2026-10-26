@@ -82,6 +82,7 @@ export const api = {
     return request("/api/resumes/upload", { method: "POST", body: form, isForm: true });
   },
   myResumes: () => request("/api/resumes/me"),
+  resumeInsights: () => request("/api/resumes/me/insights"),
 
   // applications
   applyToJob: (jobId) => request(`/api/jobs/${jobId}/apply`, { method: "POST" }),
@@ -108,6 +109,9 @@ export const api = {
 
   // evaluations
   createEvaluation: (payload) => request("/api/evaluations", { method: "POST", body: payload }),
+  getAIFeedback: (applicationId) => request(`/api/applications/${applicationId}/ai-feedback`),
+  saveAIFeedback: (applicationId, payload) =>
+    request(`/api/applications/${applicationId}/ai-feedback`, { method: "PUT", body: payload }),
   listEvaluations: (applicationId) => request(`/api/applications/${applicationId}/evaluations`),
 
   // stats

@@ -18,6 +18,10 @@ class Settings(BaseSettings):
     ]
     ADMIN_EMAIL: str = "admin@smartrecruit.ai"
     ADMIN_PASSWORD: str = "Admin@123"
+    # Engine AI. AI_WEIGHTS = "kỹ năng,kinh nghiệm,ngữ nghĩa,dự án" (ví dụ "0.4,0.25,0.2,0.15"); để trống = mặc định.
+    AI_WEIGHTS: str = ""
+    AI_OCR: bool = True  # tự đọc CV dạng ảnh/scan bằng Tesseract nếu máy có cài
+    AI_OCR_LANGS: str = "eng+vie"
 
     class Config:
         env_file = ".env"

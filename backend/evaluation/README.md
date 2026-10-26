@@ -53,3 +53,7 @@ python evaluation/export_cv_jd_pairs.py
 ```
 
 Script se co gang reuse truc tiep `app.ai_service.match_candidate` de tinh `ai_score`. Neu moi truong chay thieu dependency hoac import bi loi, script van export CSV va de trong `ai_score`, dong thoi in ly do ra terminal.
+
+## Cập nhật engine v2
+
+`extraction_benchmark.py` so sánh engine v1 (`legacy_ai_service.py`) với v2 trên các ca gán tay; kết quả ở `results/extraction_benchmark.txt`. Xem `AI_UPGRADE.md` ở thư mục gốc.

@@ -11,7 +11,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from .database import get_db
 from .models import (
     User, Job, Resume, Application, ApplicationStatusHistory,
-    Company, Interview, Notification, Evaluation,
+    Company, Interview, Notification, Evaluation, AIFeedback,
 )
 from .schemas import (
     RegisterIn, LoginIn, Token, UserOut,
@@ -22,12 +22,14 @@ from .schemas import (
     InterviewCreate, InterviewOut, InterviewStatusUpdateIn, NotificationOut,
     EvaluationCreate, EvaluationOut,
     AdminUserUpdate,
+    AIFeedbackIn, AIFeedbackOut, ResumeInsightsOut,
 )
 from .security import hash_password, verify_password, create_access_token
 from .deps import current_user, require_role
 from .ai_service import (
     extract_text_from_file, extract_skills, extract_experience,
-    extract_education, extract_projects, match_candidate, recommend_jobs_for_resume,
+    extract_education, extract_projects, match_candidate, recommend_jobs_for_resume, ScoringContext,
+    resume_tips,
 )
 from .config import settings, MAX_UPLOAD_BYTES
 
@@ -239,7 +241,15 @@ def upload_resume(file: UploadFile = File(...), db: Session = Depends(get_db), u
     try:
         text = extract_text_from_file(path, file.filename or name)
     except Exception as e:
+        os.remove(path)
         raise HTTPException(400, str(e))
+    if len(text.strip()) < 20:
+        os.remove(path)
+        raise HTTPException(
+            400,
+            "Không đọc được văn bản từ CV (có thể là bản quét/ảnh). Hãy xuất lại CV dạng PDF có chữ, "
+            "hoặc nhờ quản trị viên bật OCR (cài Tesseract).",
+        )
 
     skills = extract_skills(text)
     exp = extract_experience(text)
@@ -349,7 +359,11 @@ def apply(job_id: int, db: Session = Depends(get_db), user: User = Depends(requi
         raise HTTPException(409, "You have already applied to this job")
 
     skills = [x for x in resume.skills.split(", ") if x]
-    m = match_candidate(job.description, job.skills, job.min_experience, resume.raw_text, skills, resume.experience_years)
+    scoring_context = ScoringContext.from_jobs(list(db.scalars(select(Job).where(Job.status == "open"))))
+    m = match_candidate(
+        job.description, job.skills, job.min_experience, resume.raw_text, skills, resume.experience_years,
+        job_title=job.title, context=scoring_context, redact_terms=[user.full_name], with_evidence=False,
+    )
     application = Application(
         candidate_id=user.id, job_id=job_id, resume_id=resume.id,
         skill_score=m["skill_score"], experience_score=m["experience_score"],
@@ -448,9 +462,13 @@ def recommend_jobs(limit: int = 5, db: Session = Depends(get_db), user: User = D
         raise HTTPException(400, "Upload a CV first to get AI job recommendations")
     skills = [x for x in resume.skills.split(", ") if x]
     open_jobs = list(db.scalars(select(Job).where(Job.status == "open")))
+    scoring_context = ScoringContext.from_jobs(open_jobs)  # cùng ngữ cảnh IDF với lúc ứng tuyển
     already_applied = {a.job_id for a in db.scalars(select(Application).where(Application.candidate_id == user.id))}
     open_jobs = [j for j in open_jobs if j.id not in already_applied]
-    ranked = recommend_jobs_for_resume(resume.raw_text, skills, resume.experience_years, open_jobs)
+    ranked = recommend_jobs_for_resume(
+        resume.raw_text, skills, resume.experience_years, open_jobs, context=scoring_context,
+        redact_terms=[user.full_name],
+    )
     results = []
     for item in ranked[:limit]:
         job = item["job"]
@@ -460,9 +478,86 @@ def recommend_jobs(limit: int = 5, db: Session = Depends(get_db), user: User = D
             "final_score": m["final_score"],
             "skill_score": m["skill_score"],
             "missing_skills": m["missing_skills"],
+            "matched_skills": m["matched_skills"],
+            "partial_skills": m["partial_skills"],
+            "preferred_skills": m["preferred_skills"],
+            "evidence": m.get("evidence", {}),
             "explanation": m["explanation"],
         })
     return results
+
+
+# =====================================================================
+# AI: PHÂN TÍCH CV VÀ PHẢN HỒI CỦA NHÀ TUYỂN DỤNG
+# =====================================================================
+@api.get("/resumes/me/insights", response_model=ResumeInsightsOut)
+def resume_insights(db: Session = Depends(get_db), user: User = Depends(require_role("candidate"))):
+    resume = db.scalars(select(Resume).where(Resume.candidate_id == user.id).order_by(Resume.created_at.desc())).first()
+    if not resume:
+        raise HTTPException(404, "Upload a CV first")
+    return resume_tips(resume.raw_text)
+
+
+AI_FEEDBACK_LABELS = ("agree", "too_high", "too_low")
+
+
+def _feedback_out(item: AIFeedback) -> dict:
+    return {"application_id": item.application_id, "label": item.label, "note": item.note,
+            "score_snapshot": item.score_snapshot, "updated_at": item.updated_at}
+
+
+@api.put("/applications/{application_id}/ai-feedback", response_model=AIFeedbackOut)
+def save_ai_feedback(application_id: int, data: AIFeedbackIn, db: Session = Depends(get_db),
+                     user: User = Depends(require_role("recruiter"))):
+    application = db.get(Application, application_id)
+    if not application or application.job.recruiter_id != user.id:
+        raise HTTPException(404, "Application not found")
+    if data.label not in AI_FEEDBACK_LABELS:
+        raise HTTPException(400, f"label must be one of: {', '.join(AI_FEEDBACK_LABELS)}")
+    item = db.scalars(select(AIFeedback).where(
+        AIFeedback.application_id == application_id, AIFeedback.recruiter_id == user.id)).first()
+    if item:
+        item.label, item.note, item.score_snapshot = data.label, data.note.strip()[:1000], application.final_score
+    else:
+        item = AIFeedback(application_id=application_id, recruiter_id=user.id, label=data.label,
+                          note=data.note.strip()[:1000], score_snapshot=application.final_score)
+        db.add(item)
+    db.commit()
+    db.refresh(item)
+    return _feedback_out(item)
+
+
+@api.get("/applications/{application_id}/ai-feedback", response_model=AIFeedbackOut | None)
+def get_ai_feedback(application_id: int, db: Session = Depends(get_db), user: User = Depends(require_role("recruiter"))):
+    application = db.get(Application, application_id)
+    if not application or application.job.recruiter_id != user.id:
+        raise HTTPException(404, "Application not found")
+    item = db.scalars(select(AIFeedback).where(
+        AIFeedback.application_id == application_id, AIFeedback.recruiter_id == user.id)).first()
+    return _feedback_out(item) if item else None
+
+
+@api.get("/admin/ai/feedback-summary")
+def ai_feedback_summary(db: Session = Depends(get_db), user: User = Depends(require_role("admin"))):
+    rows = list(db.scalars(select(AIFeedback)))
+    counts = {label: sum(1 for r in rows if r.label == label) for label in AI_FEEDBACK_LABELS}
+    total = len(rows)
+    by_label = {
+        label: round(sum(r.score_snapshot for r in rows if r.label == label) / counts[label], 2) if counts[label] else None
+        for label in AI_FEEDBACK_LABELS
+    }
+    outcomes = {
+        "positive": db.scalar(select(func.count(Application.id)).where(Application.status.in_(("interview", "offer", "hired")))) or 0,
+        "negative": db.scalar(select(func.count(Application.id)).where(Application.status == "rejected")) or 0,
+    }
+    return {
+        "total": total,
+        "counts": counts,
+        "agreement_rate": round(counts["agree"] / total, 3) if total else None,
+        "average_score_by_label": by_label,
+        "outcomes": outcomes,
+        "enough_data_to_tune": total >= 30 and min(outcomes.values()) >= 8,
+    }
 
 
 # =====================================================================
