@@ -441,10 +441,11 @@ function JobManager() {
             <label htmlFor="job-skills">Kỹ năng yêu cầu (phân cách bởi dấu phẩy)</label>
             <input
               id="job-skills"
-              placeholder="python, fastapi, sql"
+              placeholder="python, fastapi, sql, docker (ưu tiên)"
               value={form.skills}
               onChange={(e) => update("skills", e.target.value)}
             />
+            <p className="field-hint">Kỹ năng không bắt buộc: thêm “(ưu tiên)” phía sau, ví dụ <em>docker (ưu tiên)</em>. Kỹ năng ưu tiên ảnh hưởng điểm AI bằng một nửa kỹ năng bắt buộc.</p>
             <div className="recruiter-job-fields">
               <div>
                 <label htmlFor="job-experience">Kinh nghiệm tối thiểu (năm)</label>
@@ -998,6 +999,79 @@ function InterviewProposalModal({ application, busy, error, onClose, onConfirm }
   );
 }
 
+const AI_FEEDBACK_OPTIONS = [
+  ["agree", "Điểm hợp lý"],
+  ["too_high", "AI chấm quá cao"],
+  ["too_low", "AI chấm quá thấp"],
+];
+
+function AIFeedbackBox({ applicationId }) {
+  const [label, setLabel] = useState("");
+  const [note, setNote] = useState("");
+  const [status, setStatus] = useState("");
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    setLabel("");
+    setNote("");
+    setStatus("");
+    api
+      .getAIFeedback(applicationId)
+      .then((data) => {
+        if (active && data) {
+          setLabel(data.label);
+          setNote(data.note || "");
+        }
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [applicationId]);
+
+  async function save(nextLabel) {
+    setError("");
+    setStatus("");
+    try {
+      await api.saveAIFeedback(applicationId, { label: nextLabel, note });
+      setLabel(nextLabel);
+      setStatus("Đã ghi nhận phản hồi. Cảm ơn bạn đã giúp cải thiện AI.");
+    } catch (e) {
+      setError(e.message || "Không lưu được phản hồi.");
+    }
+  }
+
+  return (
+    <div className="ai-feedback" role="group" aria-label="Đánh giá điểm AI">
+      <h3>Điểm AI này có đúng không?</h3>
+      <div className="ai-feedback-options">
+        {AI_FEEDBACK_OPTIONS.map(([value, text]) => (
+          <button
+            key={value}
+            type="button"
+            className={`ai-feedback-btn ${label === value ? "is-active" : ""}`}
+            aria-pressed={label === value}
+            onClick={() => save(value)}
+          >
+            {text}
+          </button>
+        ))}
+      </div>
+      <input
+        className="ai-feedback-note"
+        aria-label="Ghi chú cho phản hồi AI"
+        placeholder="Ghi chú (không bắt buộc), nhấn một nút ở trên để lưu"
+        maxLength={300}
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+      />
+      {status && <p className="ai-feedback-status">{status}</p>}
+      {error && <p className="ai-feedback-error">{error}</p>}
+    </div>
+  );
+}
+
 function CandidateDetailModal({ application, onClose }) {
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1041,6 +1115,7 @@ function CandidateDetailModal({ application, onClose }) {
             ) : <p className="job-meta">Không có kỹ năng thiếu trong kết quả AI.</p>}
             <h3>Giải thích</h3>
             <p className="ats-explanation">{application.explanation || "Chưa có giải thích từ hệ thống AI."}</p>
+            <AIFeedbackBox applicationId={application.id} />
           </section>
 
           <section>

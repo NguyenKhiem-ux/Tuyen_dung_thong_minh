@@ -1,0 +1,12 @@
+.venv*/
+venv/
+node_modules/
+__pycache__/
+*.pyc
+*.db
+*.db.bak*
+backend/uploads/*
+!backend/uploads/.gitkeep
+.env
+dist/
+test-results/

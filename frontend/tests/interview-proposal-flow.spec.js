@@ -125,9 +125,9 @@ test("recruiter proposes three times and candidate confirms one shared interview
   await page.locator(".recruiter-nav").getByRole("link", { name: "Ứng viên & ATS", exact: true }).click();
   await page.getByRole("button", { name: "Chuyển sang Phỏng vấn" }).click();
   await expect(page.getByRole("dialog")).toContainText("Đề xuất thời gian phỏng vấn");
-  await page.getByLabel("Phương án 1").fill("2026-10-20T09:00");
-  await page.getByLabel("Phương án 2").fill("2026-10-21T14:00");
-  await page.getByLabel("Phương án 3").fill("2026-10-22T10:30");
+  await page.getByLabel("Phương án 1").fill("2030-10-20T09:00");
+  await page.getByLabel("Phương án 2").fill("2030-10-21T14:00");
+  await page.getByLabel("Phương án 3").fill("2030-10-22T10:30");
   await page.getByLabel("Thời lượng (phút)").fill("60");
   await page.getByLabel("Địa điểm / Link").fill("https://meet.example/interview");
   await page.getByLabel("Ghi chú", { exact: true }).fill("Technical interview");

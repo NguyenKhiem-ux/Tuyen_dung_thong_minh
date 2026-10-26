@@ -75,6 +75,7 @@ test("recruiter moves candidates through the ATS pipeline and sees history", asy
       application.status = "interview";
       return route.fulfill({ json: { id: 50, application_id: application.id, status: "pending", options: [] } });
     }
+    if (path === `/api/applications/${application.id}/ai-feedback`) return route.fulfill({ json: null });
     if (path === `/api/applications/${application.id}/status` && request.method() === "PATCH") {
       const payload = request.postDataJSON();
       history.push({
@@ -129,9 +130,9 @@ test("recruiter moves candidates through the ATS pipeline and sees history", asy
   await page.locator(".recruiter-nav").getByRole("link", { name: "Ứng viên & ATS", exact: true }).click();
   await expect(page.locator(".ats-column-screening")).toContainText("Nguyễn Văn A");
   await page.getByRole("button", { name: "Chuyển sang Phỏng vấn" }).click();
-  await page.getByLabel("Phương án 1").fill("2026-10-20T09:00");
-  await page.getByLabel("Phương án 2").fill("2026-10-21T14:00");
-  await page.getByLabel("Phương án 3").fill("2026-10-22T10:30");
+  await page.getByLabel("Phương án 1").fill("2030-10-20T09:00");
+  await page.getByLabel("Phương án 2").fill("2030-10-21T14:00");
+  await page.getByLabel("Phương án 3").fill("2030-10-22T10:30");
   await page.getByLabel("Ghi chú gửi ứng viên (không bắt buộc)").fill("Vui lòng chọn một lịch phỏng vấn phù hợp.");
   await page.getByRole("button", { name: "Gửi đề xuất" }).click();
   await expect(page.locator(".ats-column-interview")).toContainText("Nguyễn Văn A");

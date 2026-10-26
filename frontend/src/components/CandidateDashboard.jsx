@@ -496,6 +496,56 @@ function JobSearch() {
   );
 }
 
+const TIP_SEVERITY = { high: "Quan trọng", medium: "Nên làm", low: "Gợi ý" };
+
+function ResumeInsights({ resumeId }) {
+  const [state, setState] = useState({ loading: true, data: null, error: "" });
+
+  useEffect(() => {
+    let active = true;
+    setState({ loading: true, data: null, error: "" });
+    api
+      .resumeInsights()
+      .then((data) => active && setState({ loading: false, data, error: "" }))
+      .catch((e) => active && setState({ loading: false, data: null, error: e.message || "Không tải được phân tích CV." }));
+    return () => {
+      active = false;
+    };
+  }, [resumeId]);
+
+  if (state.loading) return <Spinner />;
+  if (state.error) return <Alert>{state.error}</Alert>;
+  const { quality_score: quality, tips } = state.data;
+  const tone = quality >= 80 ? "good" : quality >= 55 ? "fair" : "poor";
+  return (
+    <div className="resume-insights" aria-live="polite">
+      <div className="resume-quality">
+        <div className="resume-quality-head">
+          <h3>Chất lượng CV</h3>
+          <strong className={`resume-quality-score ${tone}`}>{quality}/100</strong>
+        </div>
+        <div className="resume-quality-bar" role="progressbar" aria-valuenow={quality} aria-valuemin={0} aria-valuemax={100}>
+          <span className={tone} style={{ width: `${quality}%` }} />
+        </div>
+      </div>
+      {tips.length === 0 ? (
+        <p className="resume-insight-ok">
+          <CheckCircle2 size={17} aria-hidden="true" /> CV của bạn đã đầy đủ các mục chính mà hệ thống kiểm tra.
+        </p>
+      ) : (
+        <ul className="resume-tip-list">
+          {tips.slice(0, 5).map((tip) => (
+            <li key={tip.code}>
+              <span className={`tip-severity ${tip.severity}`}>{TIP_SEVERITY[tip.severity]}</span>
+              <span>{tip.message}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function ResumeManager() {
   const [resumes, setResumes] = useState([]);
   const [error, setError] = useState("");
@@ -626,13 +676,17 @@ function ResumeManager() {
               <strong>{current && experience > 0 ? `${formatNumber(experience)} năm` : "--"}</strong>
             </div>
           </div>
-          <div className="resume-tip">
-            <Lightbulb size={23} aria-hidden="true" />
-            <div>
-              <h3>Mẹo để có CV tốt hơn</h3>
-              <p>Hãy cập nhật CV thường xuyên để AI có thể phân tích chính xác và gợi ý những cơ hội phù hợp nhất cho bạn.</p>
+          {current ? (
+            <ResumeInsights resumeId={current.id} />
+          ) : (
+            <div className="resume-tip">
+              <Lightbulb size={23} aria-hidden="true" />
+              <div>
+                <h3>Mẹo để có CV tốt hơn</h3>
+                <p>Hãy cập nhật CV thường xuyên để AI có thể phân tích chính xác và gợi ý những cơ hội phù hợp nhất cho bạn.</p>
+              </div>
             </div>
-          </div>
+          )}
         </aside>
       </div>
 
@@ -1200,7 +1254,10 @@ function Recommendations() {
 function RecommendationCard({ item }) {
   const job = item.job || {};
   const matchedSkills = Array.isArray(item.matched_skills) ? item.matched_skills.filter(Boolean) : [];
+  const partialSkills = Array.isArray(item.partial_skills) ? item.partial_skills.filter(Boolean) : [];
   const missingSkills = Array.isArray(item.missing_skills) ? item.missing_skills.filter(Boolean) : [];
+  const preferredSkills = new Set(Array.isArray(item.preferred_skills) ? item.preferred_skills : []);
+  const evidence = item.evidence && typeof item.evidence === "object" ? Object.entries(item.evidence).slice(0, 4) : [];
   const score = Math.max(0, Math.min(100, number(item.final_score)));
   const explanation = typeof item.explanation === "string" ? item.explanation.trim() : "";
   const scoreBreakdown = [
@@ -1253,7 +1310,7 @@ function RecommendationCard({ item }) {
 
       <div className="recommendation-skill-grid">
         {matchedSkills.length > 0 && (
-          <section className="recommendation-skill-section recommendation-matched-skills">
+          <section className="recommendation-skill-section recommendation-matched-skills matched-skills">
             <h3>Kỹ năng phù hợp</h3>
             <div>
               {matchedSkills.map((skill) => (
@@ -1262,12 +1319,22 @@ function RecommendationCard({ item }) {
             </div>
           </section>
         )}
-        <section className="recommendation-skill-section recommendation-missing-skills">
+        {partialSkills.length > 0 && (
+          <section className="recommendation-skill-section recommendation-partial-skills partial-skills">
+            <h3>Khớp một phần</h3>
+            <div>
+              {partialSkills.map((skill) => (
+                <span key={skill}>{skill}</span>
+              ))}
+            </div>
+          </section>
+        )}
+        <section className="recommendation-skill-section recommendation-missing-skills missing-skills">
           <h3>Kỹ năng cần bổ sung</h3>
           {missingSkills.length > 0 ? (
             <div>
               {missingSkills.map((skill) => (
-                <span key={skill}>{skill}</span>
+                <span key={skill}>{preferredSkills.has(skill) ? `${skill} (ưu tiên)` : skill}</span>
               ))}
             </div>
           ) : (
@@ -1297,6 +1364,20 @@ function RecommendationCard({ item }) {
             Xem giải thích chi tiết từ AI
           </summary>
           <p>{explanation}</p>
+        </details>
+      )}
+
+      {evidence.length > 0 && (
+        <details className="ai-evidence">
+          <summary>Bằng chứng trong CV của bạn</summary>
+          <ul>
+            {evidence.map(([skill, snippet]) => (
+              <li key={skill}>
+                <strong>{skill}</strong>
+                <span>{snippet}</span>
+              </li>
+            ))}
+          </ul>
         </details>
       )}
 

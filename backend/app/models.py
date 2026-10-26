@@ -210,3 +210,18 @@ class Evaluation(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     application = relationship("Application", back_populates="evaluations")
+
+
+class AIFeedback(Base):
+    """Nhà tuyển dụng đánh giá điểm AI của một đơn: hợp lý / quá cao / quá thấp.
+    Là nguồn dữ liệu để đo và hiệu chỉnh engine (xem evaluation/feedback_report.py)."""
+    __tablename__ = "ai_feedback"
+    __table_args__ = (UniqueConstraint("application_id", "recruiter_id", name="uq_ai_feedback_app_recruiter"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    application_id: Mapped[int] = mapped_column(ForeignKey("applications.id"))
+    recruiter_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    label: Mapped[str] = mapped_column(String(20))  # agree | too_high | too_low
+    note: Mapped[str] = mapped_column(Text, default="")
+    score_snapshot: Mapped[float] = mapped_column(Float, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

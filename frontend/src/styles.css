@@ -3407,6 +3407,11 @@ button:disabled {
   color: #008f40;
 }
 
+.recommendation-partial-skills > div > span {
+  background: #fff8e8;
+  color: #9a5b00;
+}
+
 .recommendation-missing-skills > div > span {
   background: #fff3df;
   color: #b65e00;
@@ -6671,3 +6676,143 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 }
+
+/* ===== AI v3: phân tích CV, bằng chứng, phản hồi của nhà tuyển dụng ===== */
+.resume-insights {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+}
+.resume-quality-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.resume-quality-head h3 {
+  margin: 0;
+  font-size: 15px;
+}
+.resume-quality-score {
+  font-size: 22px;
+  font-weight: 750;
+}
+.resume-quality-score.good { color: #00864a; }
+.resume-quality-score.fair { color: #b7791f; }
+.resume-quality-score.poor { color: #c53030; }
+.resume-quality-bar {
+  height: 8px;
+  margin-top: 8px;
+  overflow: hidden;
+  border-radius: 6px;
+  background: #e9eef2;
+}
+.resume-quality-bar span {
+  display: block;
+  height: 100%;
+  border-radius: 6px;
+  transition: width 0.3s ease;
+}
+.resume-quality-bar .good { background: #00b14f; }
+.resume-quality-bar .fair { background: #f0a626; }
+.resume-quality-bar .poor { background: #e5534b; }
+.resume-tip-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.resume-tip-list li {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #3b4a5f;
+}
+.tip-severity {
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+}
+.tip-severity.high { background: #fdecea; color: #b42318; }
+.tip-severity.medium { background: #fff4e0; color: #9a5b00; }
+.tip-severity.low { background: #eaf2ff; color: #2e65b8; }
+.resume-insight-ok {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 0;
+  color: #00864a;
+  font-size: 13px;
+}
+.partial-skills strong { color: #9a5b00; }
+.matched-skills strong { color: #00864a; }
+.ai-evidence {
+  margin-top: 10px;
+  font-size: 13px;
+}
+.ai-evidence summary {
+  cursor: pointer;
+  color: #00864a;
+  font-weight: 600;
+}
+.ai-evidence ul {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.ai-evidence li {
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border-left: 3px solid #b7e4ca;
+  background: #f6fbf8;
+  color: #3b4a5f;
+}
+.field-hint {
+  margin: -2px 0 10px;
+  color: #6b7b90;
+  font-size: 12px;
+}
+.ai-feedback {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid #e6ebef;
+}
+.ai-feedback h3 {
+  margin: 0 0 10px;
+}
+.ai-feedback-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.ai-feedback-btn {
+  padding: 7px 14px;
+  border: 1px solid #d5dee7;
+  border-radius: 18px;
+  background: #fff;
+  color: #3b4a5f;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.ai-feedback-btn:hover { border-color: #7cc99d; color: #007e3c; }
+.ai-feedback-btn.is-active {
+  border-color: #00a046;
+  background: #00a046;
+  color: #fff;
+}
+.ai-feedback-note {
+  width: 100%;
+  margin-top: 10px;
+}
+.ai-feedback-status { margin: 8px 0 0; color: #00864a; font-size: 13px; }
+.ai-feedback-error { margin: 8px 0 0; color: #b42318; font-size: 13px; }

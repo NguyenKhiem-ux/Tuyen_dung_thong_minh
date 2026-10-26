@@ -58,10 +58,13 @@ test("guest Home, real job details, search, refresh, history and auth entry poin
   await expect(page.getByRole("heading", { level: 1 })).toContainText("Tìm công việc phù hợp");
   await expect(page.locator(".site-auth-actions")).toBeVisible();
   await expect(page.locator(".job-skeleton")).toHaveCount(0);
-  await expect(page.locator(".home-job-grid").first().locator("article")).toHaveCount(Math.min(3, jobs.length));
+  await expect(page.locator(".home-job-grid").first().locator("article")).toHaveCount(Math.min(6, jobs.length));
   const featured = [...jobs]
     .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
     .sort((a, b) => b.applicants_count - a.applicants_count);
+  await expect(page.locator(".home-stats .home-stat")).toHaveCount(4);
+  await expect(page.locator(".home-stats .home-stat strong").first()).toHaveText(String(jobs.length));
+  await expect(page.getByRole("link", { name: "Đăng tuyển" })).toHaveAttribute("href", "/register?role=recruiter");
   if (featured.length) {
     await expect(page.locator(".home-job-grid").first().locator("h3").first()).toHaveText(featured[0].title);
     await page.locator(".home-job-detail-link").first().click();
@@ -93,6 +96,8 @@ test("guest Home, real job details, search, refresh, history and auth entry poin
   await expect(page).toHaveURL(/\/login\?redirect=/);
   await page.goto("/register");
   await expect(page.getByRole("button", { name: "Tạo tài khoản", exact: true })).toBeVisible();
+  await page.goto("/register?role=recruiter");
+  await expect(page.locator(".role-toggle button.active")).toHaveText("Nhà tuyển dụng");
   expect(errors).toEqual([]);
 });
 
@@ -313,7 +318,7 @@ test("loading, empty and failed jobs do not hide the Home", async ({ page }) => 
     await route.fulfill({ json: [] });
   });
   await page.goto("/");
-  await expect(page.locator(".job-skeleton")).toHaveCount(8);
+  await expect(page.locator(".job-skeleton")).toHaveCount(11);
   release();
   await expect(page.getByText("Hiện chưa có việc làm phù hợp.")).toHaveCount(2);
   await page.unroute("**/api/jobs?*");
