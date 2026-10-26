@@ -42,6 +42,7 @@ test("recruiter moves candidates through the ATS pipeline and sees history", asy
     if (path === "/api/jobs/mine") return route.fulfill({ json: [job] });
     if (path === `/api/jobs/${job.id}/applications`) return route.fulfill({ json: [application] });
     if (path === `/api/applications/${application.id}/history`) return route.fulfill({ json: history });
+    if (path === `/api/applications/${application.id}/ai-feedback`) return route.fulfill({ json: null });
     if (path === `/api/applications/${application.id}/status` && request.method() === "PATCH") {
       const payload = request.postDataJSON();
       history.push({

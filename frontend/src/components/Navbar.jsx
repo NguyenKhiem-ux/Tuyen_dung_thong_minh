@@ -436,6 +436,10 @@ export default function Navbar({
               <Link className="home-button" href="/login" onClick={closeMenus}>
                 Đăng nhập
               </Link>
+              <Link className="home-button dark site-employer-link" href="/register?role=recruiter" onClick={closeMenus}>
+                <Building2 size={16} aria-hidden="true" />
+                Đăng tuyển
+              </Link>
             </div>
           )}
         </div>

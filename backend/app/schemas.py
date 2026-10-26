@@ -206,3 +206,31 @@ class EvaluationOut(BaseModel):
 class AdminUserUpdate(BaseModel):
     is_active: Optional[bool] = None
     role: Optional[str] = None
+
+
+# ---------- AI ----------
+class AIFeedbackIn(BaseModel):
+    label: str  # agree | too_high | too_low
+    note: str = ""
+
+
+class AIFeedbackOut(BaseModel):
+    application_id: int
+    label: str
+    note: str
+    score_snapshot: float
+    updated_at: datetime
+
+
+class ResumeTipOut(BaseModel):
+    code: str
+    severity: str
+    message: str
+
+
+class ResumeInsightsOut(BaseModel):
+    quality_score: int
+    tips: list[ResumeTipOut]
+    skills: list[str]
+    experience_years: float
+    engine_version: str

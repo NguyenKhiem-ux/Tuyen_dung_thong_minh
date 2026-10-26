@@ -1512,6 +1512,465 @@
   margin-top: 22px;
 }
 
+/* ===== Trang chủ v2: bố cục tham khảo TopCV (khối gốc, đặt trước các @media) ===== */
+.home-button.dark {
+  background: #14213d;
+  border-color: #14213d;
+  color: #fff;
+}
+.home-button.dark:hover {
+  background: #0b162c;
+  color: #fff;
+}
+.site-auth-actions {
+  align-items: center;
+}
+.site-employer-link {
+  position: relative;
+  margin-left: 8px;
+}
+.site-employer-link::before {
+  content: "";
+  position: absolute;
+  top: 9px;
+  bottom: 9px;
+  left: -9px;
+  width: 1px;
+  background: #d8e3dd;
+}
+.home-hero-inner {
+  padding-bottom: 58px;
+}
+.home-hero-copy {
+  width: 63%;
+}
+.home-hero .home-search {
+  min-height: 68px;
+  border-radius: 14px;
+  box-shadow: 0 8px 26px #164e2f14;
+}
+.home-search-type {
+  flex: 0 0 176px;
+  border-left: 1px solid #e8ecf0;
+}
+.home-search select {
+  width: 100%;
+  margin: 0;
+  padding: 10px 0;
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+  box-shadow: none;
+  color: #29374d;
+  font-size: 13px;
+  line-height: 1.5;
+  cursor: pointer;
+}
+.home-search select:focus {
+  outline: 2px solid #b7e4ca;
+  outline-offset: 1px;
+  box-shadow: none;
+}
+.home-section-icon.green {
+  color: #00964a;
+  background: #e3f7ec;
+}
+
+/* Thanh số liệu thị trường (tính từ danh sách việc làm thật) */
+.home-stats {
+  position: relative;
+  z-index: 3;
+  margin-top: -36px;
+}
+.home-stats-card {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid #dcebe3;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 12px 32px #164e2f17;
+}
+.home-stats-head {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 22px;
+  border-bottom: 1px solid #ecf2ee;
+  background: #fafdfb;
+}
+.home-stats-head h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+}
+.home-stats-head time {
+  color: #6b7b90;
+  font-size: 12px;
+}
+.home-stat {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 22px;
+}
+.home-stat + .home-stat {
+  border-left: 1px solid #ecf2ee;
+}
+.home-stat strong {
+  display: block;
+  color: #101b30;
+  font-size: 26px;
+  font-weight: 750;
+  line-height: 1.15;
+}
+.home-stat > div > span {
+  display: block;
+  color: #64748b;
+  font-size: 12px;
+}
+.home-stat-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 46px;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+}
+.home-stat-icon.green {
+  color: #00964a;
+  background: #e3f7ec;
+}
+.home-stat-icon.blue {
+  color: #2e65b8;
+  background: #eaf2ff;
+}
+.home-stat-icon.gold {
+  color: #d98a0c;
+  background: #fff4e0;
+}
+.home-stat-icon.rose {
+  color: #c2417a;
+  background: #fdecf4;
+}
+.home-stat-skeleton {
+  display: block;
+  width: 64px;
+  height: 26px;
+  margin-bottom: 4px;
+  border-radius: 5px;
+  background: #eef3f0;
+}
+
+/* Bộ lọc nhanh việc làm nổi bật */
+.home-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 16px;
+}
+.home-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 38px;
+  padding: 6px 15px;
+  border: 1px solid #dbe7e0;
+  border-radius: 20px;
+  background: #fff;
+  color: #42536b;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.home-chip:hover {
+  border-color: #7cc99d;
+  color: #007e3c;
+}
+.home-chip.is-active {
+  border-color: #009c46;
+  background: #009c46;
+  color: #fff;
+}
+
+/* Thẻ việc làm trên trang chủ: chữ lớn hơn, nhãn, hiệu ứng hover */
+.home-page .home-job-card:not(.job-skeleton) {
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.15s ease;
+}
+.home-page .home-job-card:not(.job-skeleton):hover {
+  border-color: #8fcfaa;
+  box-shadow: 0 10px 26px #164e2f1a;
+  transform: translateY(-2px);
+}
+.home-page .home-job-card:not(.compact) {
+  min-height: 218px;
+}
+.home-page .home-job-card:not(.compact) .home-job-heading h3 {
+  font-size: 15px;
+}
+.home-page .home-job-card:not(.compact) .home-job-heading p {
+  font-size: 13px;
+}
+.home-page .home-job-card:not(.compact) .home-job-meta {
+  font-size: 12px;
+}
+.home-page .home-job-card:not(.compact) .home-job-salary {
+  font-size: 14px;
+}
+.home-page .home-job-card:not(.compact) .home-job-skills > span {
+  font-size: 11px;
+}
+.job-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 11px;
+}
+.job-badge {
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  line-height: 1.6;
+  text-transform: uppercase;
+}
+.job-badge.hot {
+  background: #fff0ec;
+  color: #d4380d;
+}
+.job-badge.new {
+  background: #e3f7ec;
+  color: #007a38;
+}
+.job-badge.remote {
+  background: #eaf2ff;
+  color: #2e65b8;
+}
+.home-job-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: auto;
+  padding-top: 12px;
+}
+.home-job-footer .home-job-detail-link {
+  flex-shrink: 0;
+  margin: 0;
+}
+.home-job-posted {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #728097;
+  font-size: 12px;
+}
+.home-job-posted.compact-posted {
+  margin: 6px 0 0;
+  font-size: 11px;
+}
+
+/* Lưới ngành nghề và nhà tuyển dụng */
+.home-category-grid,
+.home-company-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 14px;
+}
+.home-company-grid {
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+}
+.home-category-card,
+.home-company-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 18px;
+  border: 1px solid #e6ebef;
+  border-radius: 10px;
+  background: #fff;
+  color: #15233b;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.15s ease;
+}
+.home-category-card:hover,
+.home-company-card:hover {
+  border-color: #8fcfaa;
+  box-shadow: 0 10px 26px #164e2f1a;
+  transform: translateY(-2px);
+}
+.home-category-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 50px;
+  width: 50px;
+  height: 50px;
+  border-radius: 12px;
+  background: #e7f7f0;
+  color: #00864a;
+}
+.home-category-copy,
+.home-company-copy {
+  display: grid;
+  gap: 3px;
+  flex: 1;
+}
+.home-category-copy strong,
+.home-company-copy strong {
+  color: #101b30;
+  font-size: 15px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.home-category-copy small,
+.home-company-copy small {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: #6b7b90;
+  font-size: 12px;
+}
+.home-category-arrow {
+  flex-shrink: 0;
+  margin-left: auto;
+  color: #9aa8b8;
+  transition:
+    color 0.15s ease,
+    transform 0.15s ease;
+}
+.home-category-card:hover .home-category-arrow,
+.home-company-card:hover .home-category-arrow {
+  color: #009c46;
+  transform: translateX(3px);
+}
+.home-company-card .company-mark {
+  width: 56px;
+  height: 56px;
+  font-size: 18px;
+}
+
+/* Khối dành cho nhà tuyển dụng */
+.home-employer-band {
+  margin-top: 14px;
+  background: #0f2f25;
+  scroll-margin-top: 90px;
+}
+.home-employer-inner {
+  display: grid;
+  grid-template-columns: 1fr 1.3fr;
+  gap: 48px;
+  align-items: center;
+  padding-block: 46px;
+}
+.home-employer-band .home-eyebrow {
+  background: #17503b;
+  color: #8ee6b4;
+}
+.home-employer-copy h2 {
+  margin: 0 0 12px;
+  color: #fff;
+  font-size: 30px;
+  font-weight: 750;
+  text-wrap: balance;
+}
+.home-employer-copy h2 span {
+  color: #4ade80;
+}
+.home-employer-copy > p:not(.home-eyebrow) {
+  margin: 0 0 22px;
+  color: #b7d3c3;
+  font-size: 15px;
+  line-height: 1.7;
+}
+.home-employer-band .home-button {
+  border-color: #fff;
+  background: #fff;
+  color: #0f2f25;
+}
+.home-employer-band .home-button:hover {
+  background: #e7f7ee;
+  color: #0f2f25;
+}
+.home-employer-features {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.home-employer-features li {
+  display: flex;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid #21503f;
+  border-radius: 12px;
+  background: #133a2e;
+}
+.home-employer-features li > span {
+  display: grid;
+  place-items: center;
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  background: #1b5a43;
+  color: #7ff0b0;
+}
+.home-employer-features h3 {
+  margin: 0 0 4px;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+}
+.home-employer-features p {
+  margin: 0;
+  color: #a9c9b8;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+/* Footer đầy đủ hơn */
+.site-footer-grid {
+  grid-template-columns: minmax(220px, 1.7fr) repeat(auto-fit, minmax(130px, 1fr));
+}
+.site-footer-brand p {
+  max-width: 320px;
+  line-height: 1.65;
+}
+.site-footer-grid > div > a:not(.site-brand),
+.site-footer-grid > div > span {
+  font-size: 13px;
+}
+.site-footer-bottom {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 6px 16px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-page .home-job-card:not(.job-skeleton),
+  .home-category-card,
+  .home-company-card,
+  .home-category-arrow {
+    transition: none;
+  }
+  .home-page .home-job-card:not(.job-skeleton):hover,
+  .home-category-card:hover,
+  .home-company-card:hover {
+    transform: none;
+  }
+}
 @media (min-width: 1200px) and (max-width: 1399px) {
   .site-header-inner {
     gap: 18px;
@@ -2098,5 +2557,124 @@
   }
   .home-section-heading > .home-text-link {
     margin-left: 42px;
+  }
+}
+
+/* ===== Trang chủ v2: responsive (đặt cuối file để thắng quy tắc cũ) ===== */
+@media (max-width: 1399px) {
+  .site-employer-link {
+    margin-left: 4px;
+  }
+}
+@media (min-width: 1200px) and (max-width: 1399px) {
+  .site-auth-actions {
+    gap: 8px;
+  }
+  .site-auth-actions .home-button {
+    padding-inline: 13px;
+  }
+  .home-search-type {
+    flex-basis: 168px;
+  }
+  .home-hero .home-search-location {
+    flex-basis: 150px;
+  }
+}
+@media (min-width: 768px) and (max-width: 1199px) {
+  .home-hero .home-search {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+  .home-hero .home-search-keyword {
+    flex: 1 1 100%;
+    border-bottom: 1px solid #e8ecf0;
+  }
+  .home-hero .home-search-location {
+    flex: 1 1 0;
+    border-left: 0;
+  }
+  .home-hero .home-search-type {
+    flex: 1 1 0;
+  }
+}
+@media (max-width: 1199px) {
+  .site-auth-actions {
+    flex-wrap: wrap;
+  }
+  .site-employer-link {
+    flex: 1 0 100%;
+    margin-left: 0;
+  }
+  .site-employer-link::before {
+    display: none;
+  }
+  .home-stats-card {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .home-stat {
+    border-left: 0;
+  }
+  .home-stat:nth-child(odd) {
+    border-left: 1px solid #ecf2ee;
+  }
+  .home-stat:nth-child(n + 4) {
+    border-top: 1px solid #ecf2ee;
+  }
+  .home-employer-inner {
+    grid-template-columns: 1fr;
+    gap: 28px;
+  }
+  .site-footer-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .site-footer-brand {
+    grid-column: 1 / -1;
+  }
+}
+@media (max-width: 767px) {
+  .home-hero-inner {
+    padding-bottom: 235px;
+  }
+  .home-stats {
+    margin-top: 18px;
+  }
+  .home-stat {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 14px 16px;
+  }
+  .home-stat strong {
+    font-size: 22px;
+  }
+  .home-stats-head {
+    padding: 11px 16px;
+  }
+  .home-hero .home-search-type {
+    flex: auto;
+    border-left: 0;
+    border-top: 1px solid #e8ecf0;
+  }
+  .home-search select {
+    font-size: 16px;
+  }
+  .home-employer-inner {
+    padding-block: 34px;
+  }
+  .home-employer-copy h2 {
+    font-size: 24px;
+  }
+  .home-employer-features {
+    grid-template-columns: 1fr;
+  }
+  .home-category-grid,
+  .home-company-grid {
+    grid-template-columns: 1fr;
+  }
+  .site-footer-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .site-footer-bottom {
+    flex-direction: column;
   }
 }

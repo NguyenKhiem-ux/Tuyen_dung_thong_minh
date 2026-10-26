@@ -1,10 +1,18 @@
-import React from "react";
+import React, { useMemo, useState } from "react";
 import {
   ArrowRight,
+  BarChart3,
   BrainCircuit,
   BriefcaseBusiness,
+  Building2,
+  CalendarCheck,
+  ClipboardList,
   Clock3,
+  Code2,
   FileText,
+  Megaphone,
+  MapPin,
+  Palette,
   ScanLine,
   Send,
   ShieldCheck,
@@ -12,9 +20,18 @@ import {
   Star,
   TrendingUp,
 } from "lucide-react";
+import {
+  categoryCounts,
+  companySummaries,
+  featuredJobs,
+  hotJobIds,
+  marketStats,
+  parseJobDate,
+  topLocations,
+} from "../homeData.js";
 import { candidateRoutes, dashboardPath, Link, loginPath } from "../navigation.jsx";
 import { Brand } from "./Navbar.jsx";
-import { JobGrid, JobSearchBar, useJobs } from "./PublicJobs.jsx";
+import { CompanyMark, JobGrid, JobSearchBar, useJobs } from "./PublicJobs.jsx";
 
 const POPULAR_SEARCHES = ["Developer", "Data Analyst", "Marketing", "Product Manager", "Designer"];
 const AI_FEATURES = [
@@ -23,6 +40,40 @@ const AI_FEATURES = [
   [TrendingUp, "Phát hiện kỹ năng còn thiếu", "Gợi ý kỹ năng cần bổ sung"],
   [BriefcaseBusiness, "Gợi ý việc làm phù hợp", "Đề xuất công việc dựa trên dữ liệu thông minh"],
 ];
+
+const CATEGORY_ICONS = {
+  developer: Code2,
+  data: BarChart3,
+  ai: BrainCircuit,
+  product: ClipboardList,
+  design: Palette,
+  marketing: Megaphone,
+};
+const EMPLOYER_FEATURES = [
+  [Building2, "Đăng tin tuyển dụng", "Tạo hồ sơ công ty và đăng tin chỉ trong vài phút"],
+  [BrainCircuit, "AI xếp hạng ứng viên", "Điểm phù hợp theo kỹ năng, kinh nghiệm, ngữ nghĩa và dự án"],
+  [ClipboardList, "Quản lý quy trình ATS", "Theo dõi từ ứng tuyển, sàng lọc, phỏng vấn đến nhận việc"],
+  [CalendarCheck, "Lịch phỏng vấn & đánh giá", "Lên lịch online hoặc trực tiếp, chấm điểm và nhận xét ứng viên"],
+];
+const FOOTER_SEARCHES = [
+  ["Developer", { q: "Developer" }],
+  ["Data Analyst", { q: "Data Analyst" }],
+  ["Machine Learning", { q: "Machine Learning" }],
+  ["Việc làm Remote", { location: "Remote" }],
+  ["Việc làm tại Hà Nội", { location: "Hà Nội" }],
+  ["Việc làm tại TP. Hồ Chí Minh", { location: "TP. Hồ Chí Minh" }],
+];
+
+function searchHref(params) {
+  return `/jobs?${new URLSearchParams(params)}`;
+}
+
+function employerPath(user) {
+  if (!user) return "/register?role=recruiter";
+  return user.role === "candidate" ? null : dashboardPath(user);
+}
+
+const numberFormat = new Intl.NumberFormat("vi-VN");
 
 function aiPath(user) {
   return !user
@@ -34,11 +85,20 @@ function aiPath(user) {
 
 export default function HomePage({ user }) {
   const state = useJobs();
-  const latest = [...state.jobs].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-  const featured = [...latest].sort((a, b) => b.applicants_count - a.applicants_count).slice(0, 3);
+  const [location, setLocation] = useState("");
+  const { jobs } = state;
+  const latest = useMemo(
+    () => [...jobs].sort((a, b) => parseJobDate(b.created_at) - parseJobDate(a.created_at)),
+    [jobs],
+  );
+  const locations = useMemo(() => topLocations(jobs, 4), [jobs]);
+  const hotIds = useMemo(() => hotJobIds(jobs), [jobs]);
+  const activeLocation = locations.includes(location) ? location : "";
+  const featured = featuredJobs(jobs, activeLocation, 6);
   return (
     <main className="home-page">
-      <HeroSection locations={state.jobs.map((job) => job.location)} />
+      <HeroSection locations={jobs.map((job) => job.location)} />
+      <MarketStats {...state} />
       <section className="site-container home-jobs-section" aria-labelledby="featured-title">
         <SectionHeading
           id="featured-title"
@@ -47,9 +107,26 @@ export default function HomePage({ user }) {
           subtitle="Những cơ hội việc làm đáng chú ý dành cho bạn"
           tone="gold"
         />
-        <JobGrid {...state} jobs={featured} />
+        {locations.length > 1 && (
+          <div className="home-chip-row" role="group" aria-label="Lọc việc làm nổi bật theo địa điểm">
+            {["", ...locations].map((item) => (
+              <button
+                key={item || "all"}
+                type="button"
+                className={`home-chip ${item === activeLocation ? "is-active" : ""}`}
+                aria-pressed={item === activeLocation}
+                onClick={() => setLocation(item)}
+              >
+                {item && <MapPin size={14} aria-hidden="true" />}
+                {item || "Tất cả"}
+              </button>
+            ))}
+          </div>
+        )}
+        <JobGrid {...state} jobs={featured} count={6} hotIds={hotIds} />
       </section>
       <AIIntroSection user={user} />
+      <CategorySection {...state} />
       <section className="site-container home-jobs-section" aria-labelledby="latest-title">
         <SectionHeading
           id="latest-title"
@@ -60,8 +137,112 @@ export default function HomePage({ user }) {
         />
         <JobGrid {...state} jobs={latest.slice(0, 5)} compact count={5} />
       </section>
+      <CompanySection {...state} />
+      <EmployerBand user={user} />
       <HomeCTA user={user} />
     </main>
+  );
+}
+
+function MarketStats({ jobs, loading, error }) {
+  if (error || (!loading && !jobs.length)) return null;
+  const stats = marketStats(jobs);
+  const items = [
+    [BriefcaseBusiness, "Việc làm đang tuyển", stats.openJobs, "green"],
+    [Building2, "Doanh nghiệp tuyển dụng", stats.companies, "blue"],
+    [Sparkles, "Việc làm mới trong 7 ngày", stats.newThisWeek, "gold"],
+    [Send, "Lượt ứng tuyển", stats.applications, "rose"],
+  ];
+  return (
+    <section className="site-container home-stats" aria-labelledby="stats-title" aria-busy={loading}>
+      <div className="home-stats-card">
+        <div className="home-stats-head">
+          <h2 id="stats-title">Thị trường việc làm hôm nay</h2>
+          <time>{new Date().toLocaleDateString("vi-VN")}</time>
+        </div>
+        {items.map(([Icon, label, value, tone]) => (
+          <div className="home-stat" key={label}>
+            <span className={`home-stat-icon ${tone}`}>
+              <Icon size={22} aria-hidden="true" />
+            </span>
+            <div>
+              {loading ? <i className="home-stat-skeleton" aria-hidden="true" /> : <strong>{numberFormat.format(value)}</strong>}
+              <span>{label}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function CategorySection({ jobs, loading, error }) {
+  const categories = useMemo(() => categoryCounts(jobs), [jobs]);
+  if (loading || error || !categories.length) return null;
+  return (
+    <section className="site-container home-jobs-section" aria-labelledby="category-title">
+      <SectionHeading
+        id="category-title"
+        icon={BriefcaseBusiness}
+        title="Việc làm theo vị trí"
+        subtitle="Khám phá cơ hội theo lĩnh vực bạn quan tâm"
+        tone="green"
+      />
+      <div className="home-category-grid">
+        {categories.map((category) => {
+          const Icon = CATEGORY_ICONS[category.key] || BriefcaseBusiness;
+          return (
+            <Link key={category.key} className="home-category-card" href={searchHref({ q: category.q })}>
+              <span className="home-category-icon">
+                <Icon size={24} aria-hidden="true" />
+              </span>
+              <span className="home-category-copy">
+                <strong>{category.label}</strong>
+                <small>{numberFormat.format(category.count)} việc làm</small>
+              </span>
+              <ArrowRight className="home-category-arrow" size={17} aria-hidden="true" />
+            </Link>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function CompanySection({ jobs, loading, error }) {
+  const companies = useMemo(() => companySummaries(jobs, 6), [jobs]);
+  if (loading || error || !companies.length) return null;
+  return (
+    <section className="site-container home-jobs-section" aria-labelledby="company-title">
+      <SectionHeading
+        id="company-title"
+        icon={Building2}
+        title="Nhà tuyển dụng tiêu biểu"
+        subtitle="Các doanh nghiệp đang tuyển dụng trên Smart Recruitment AI"
+        tone="green"
+      />
+      <div className="home-company-grid">
+        {companies.map((company) => (
+          <Link key={company.key} className="home-company-card" href={searchHref({ q: company.name })}>
+            <CompanyMark job={company.sample} />
+            <span className="home-company-copy">
+              <strong>{company.name}</strong>
+              <small>
+                <BriefcaseBusiness size={13} aria-hidden="true" />
+                {numberFormat.format(company.jobs)} việc làm đang tuyển
+              </small>
+              {company.locations.length > 0 && (
+                <small>
+                  <MapPin size={13} aria-hidden="true" />
+                  {company.locations.slice(0, 2).join(", ")}
+                </small>
+              )}
+            </span>
+            <ArrowRight className="home-category-arrow" size={17} aria-hidden="true" />
+          </Link>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -91,7 +272,7 @@ function HeroSection({ locations }) {
             Smart Recruitment AI giúp bạn phân tích CV, hiểu rõ năng lực và kết nối với những cơ hội việc làm phù hợp
             nhất.
           </p>
-          <JobSearchBar locations={locations} />
+          <JobSearchBar locations={locations} withEmployment />
           <div className="popular-searches">
             <span>Tìm kiếm phổ biến:</span>
             {POPULAR_SEARCHES.map((keyword) => (
@@ -200,6 +381,44 @@ function AIIntroSection({ user }) {
   );
 }
 
+function EmployerBand({ user }) {
+  const href = employerPath(user);
+  if (!href) return null;
+  return (
+    <section className="home-employer-band" id="employers" aria-labelledby="employer-title">
+      <div className="site-container home-employer-inner">
+        <div className="home-employer-copy">
+          <p className="home-eyebrow">DÀNH CHO NHÀ TUYỂN DỤNG</p>
+          <h2 id="employer-title">
+            Tuyển đúng người, nhanh hơn với <span>AI</span>
+          </h2>
+          <p>
+            Đăng tin, nhận hồ sơ và để AI chấm điểm mức độ phù hợp của từng ứng viên, giúp bạn tập trung vào những
+            người xứng đáng nhất.
+          </p>
+          <Link className="home-button" href={href}>
+            {user ? "Bảng điều khiển" : "Đăng tin tuyển dụng"}
+            <ArrowRight size={17} aria-hidden="true" />
+          </Link>
+        </div>
+        <ul className="home-employer-features">
+          {EMPLOYER_FEATURES.map(([Icon, title, subtitle]) => (
+            <li key={title}>
+              <span>
+                <Icon size={22} strokeWidth={1.8} aria-hidden="true" />
+              </span>
+              <div>
+                <h3>{title}</h3>
+                <p>{subtitle}</p>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </section>
+  );
+}
+
 function HomeCTA({ user }) {
   return (
     <section className="home-cta-band">
@@ -230,18 +449,20 @@ function HomeCTA({ user }) {
 }
 
 export function Footer({ user }) {
+  const employerHref = employerPath(user);
   return (
     <footer className="site-footer" id="about">
       <div className="site-container">
         <div className="site-footer-grid">
           <div className="site-footer-brand">
             <Brand />
-            <p>Nền tảng tuyển dụng thông minh tích hợp AI.</p>
+            <p>Nền tảng tuyển dụng thông minh tích hợp AI, kết nối ứng viên với cơ hội việc làm phù hợp nhất.</p>
           </div>
           <div>
             <h2>Về Smart Recruitment</h2>
             <Link href="/#smart-ai">Giới thiệu</Link>
             <Link href="/jobs">Việc làm</Link>
+            {employerHref && <Link href="/#employers">Dành cho nhà tuyển dụng</Link>}
           </div>
           <div>
             <h2>Ứng viên</h2>
@@ -251,6 +472,21 @@ export function Footer({ user }) {
             </Link>
             <Link href={aiPath(user)}>Gợi ý AI</Link>
           </div>
+          {employerHref && (
+            <div>
+              <h2>Nhà tuyển dụng</h2>
+              <Link href={employerHref}>{user ? "Bảng điều khiển" : "Đăng tin tuyển dụng"}</Link>
+              <Link href="/#employers">Giải pháp tuyển dụng AI</Link>
+            </div>
+          )}
+          <div>
+            <h2>Việc làm phổ biến</h2>
+            {FOOTER_SEARCHES.map(([label, params]) => (
+              <Link key={label} href={searchHref(params)}>
+                {label}
+              </Link>
+            ))}
+          </div>
           <div>
             <h2>Hỗ trợ</h2>
             <span aria-disabled="true">Điều khoản</span>
@@ -258,7 +494,10 @@ export function Footer({ user }) {
             <span aria-disabled="true">Liên hệ</span>
           </div>
         </div>
-        <div className="site-footer-bottom">© 2026 Smart Recruitment AI.</div>
+        <div className="site-footer-bottom">
+          <span>© 2026 Smart Recruitment AI.</span>
+          <span>Tìm việc thông minh hơn với AI</span>
+        </div>
       </div>
     </footer>
   );

@@ -23,6 +23,7 @@ import {
   X,
 } from "lucide-react";
 import api from "../api.js";
+import { isNewJob, isRemoteJob, postedLabel } from "../homeData.js";
 import { candidateRoutes, Link, loginPath, navigate } from "../navigation.jsx";
 
 export function useJobs(q = "", location = "") {
@@ -46,7 +47,15 @@ export function useJobs(q = "", location = "") {
   return { ...state, retry: () => setAttempt((value) => value + 1) };
 }
 
-export function JobSearchBar({ q = "", location = "", locations = [], extraParams = {} }) {
+const EMPLOYMENT_OPTIONS = [
+  ["full-time", "Toàn thời gian"],
+  ["part-time", "Bán thời gian"],
+  ["internship", "Thực tập"],
+  ["contract", "Hợp đồng"],
+  ["freelance", "Tự do"],
+];
+
+export function JobSearchBar({ q = "", location = "", locations = [], extraParams = {}, withEmployment = false }) {
   const id = useId();
   return (
     <form
@@ -76,6 +85,20 @@ export function JobSearchBar({ q = "", location = "", locations = [], extraParam
           ))}
         </datalist>
       </label>
+      {withEmployment && (
+        <label className="home-search-type">
+          <BriefcaseBusiness size={20} aria-hidden="true" />
+          <span className="sr-only">Hình thức làm việc</span>
+          <select name="employment" defaultValue="">
+            <option value="">Mọi hình thức</option>
+            {EMPLOYMENT_OPTIONS.map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       <button type="submit" className="home-button">
         <Search size={18} aria-hidden="true" />
         Tìm kiếm
@@ -134,8 +157,12 @@ export function CompanyMark({ job }) {
   );
 }
 
-export function JobCard({ job, compact = false }) {
+export function JobCard({ job, compact = false, hot = false }) {
   const skills = splitSkills(job.skills);
+  const fresh = isNewJob(job);
+  const remote = isRemoteJob(job);
+  const posted = postedLabel(job);
+  const applicants = Number(job.applicants_count) || 0;
   return (
     <article className={`home-job-card ${compact ? "compact" : ""}`}>
       <div className="home-job-heading">
@@ -156,6 +183,13 @@ export function JobCard({ job, compact = false }) {
           <Bookmark size={17} />
         </button>
       </div>
+      {(hot || fresh || remote) && (
+        <div className="job-badges">
+          {hot && <span className="job-badge hot">Hot</span>}
+          {fresh && <span className="job-badge new">Mới</span>}
+          {remote && <span className="job-badge remote">Remote</span>}
+        </div>
+      )}
       <div className="home-job-meta">
         <span>
           <MapPin size={14} aria-hidden="true" />
@@ -170,7 +204,7 @@ export function JobCard({ job, compact = false }) {
         <Wallet size={15} aria-hidden="true" />
         {job.salary_range || "Thỏa thuận"}
       </p>
-      {!compact && (
+      {!compact && skills.length > 0 && (
         <div className="home-job-skills">
           {skills.slice(0, 4).map((skill, index) => (
             <span key={`${skill}-${index}`}>{skill}</span>
@@ -178,15 +212,28 @@ export function JobCard({ job, compact = false }) {
         </div>
       )}
       {!compact && (
-        <Link className="home-job-detail-link" href={`/jobs/${job.id}`}>
-          Xem chi tiết <ArrowRight size={15} aria-hidden="true" />
-        </Link>
+        <div className="home-job-footer">
+          <span className="home-job-posted">
+            {applicants > 0 && (
+              <>
+                <Users size={13} aria-hidden="true" />
+                {applicants} ứng viên
+                {posted && " · "}
+              </>
+            )}
+            {posted}
+          </span>
+          <Link className="home-job-detail-link" href={`/jobs/${job.id}`}>
+            Xem chi tiết <ArrowRight size={15} aria-hidden="true" />
+          </Link>
+        </div>
       )}
+      {compact && posted && <p className="home-job-posted compact-posted">{posted}</p>}
     </article>
   );
 }
 
-export function JobGrid({ jobs, loading, error, retry, compact = false, count = 3 }) {
+export function JobGrid({ jobs, loading, error, retry, compact = false, count = 3, hotIds }) {
   if (error)
     return (
       <div className="jobs-feedback" role="alert">
@@ -221,7 +268,7 @@ export function JobGrid({ jobs, loading, error, retry, compact = false, count = 
           ))}
         </>
       ) : (
-        jobs.map((job) => <JobCard key={job.id} job={job} compact={compact} />)
+        jobs.map((job) => <JobCard key={job.id} job={job} compact={compact} hot={Boolean(hotIds?.has(job.id))} />)
       )}
     </div>
   );

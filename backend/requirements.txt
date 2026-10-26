@@ -12,3 +12,6 @@ python-docx==1.1.2
 scikit-learn==1.6.0
 sentence-transformers==3.3.1
 email-validator==2.2.0
+# OCR cho CV dạng ảnh/scan (tùy chọn; cần cài thêm chương trình Tesseract, xem AI_UPGRADE.md)
+pytesseract==0.3.13
+Pillow>=10.0

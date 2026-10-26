@@ -496,6 +496,56 @@ function JobSearch() {
   );
 }
 
+const TIP_SEVERITY = { high: "Quan trọng", medium: "Nên làm", low: "Gợi ý" };
+
+function ResumeInsights({ resumeId }) {
+  const [state, setState] = useState({ loading: true, data: null, error: "" });
+
+  useEffect(() => {
+    let active = true;
+    setState({ loading: true, data: null, error: "" });
+    api
+      .resumeInsights()
+      .then((data) => active && setState({ loading: false, data, error: "" }))
+      .catch((e) => active && setState({ loading: false, data: null, error: e.message || "Không tải được phân tích CV." }));
+    return () => {
+      active = false;
+    };
+  }, [resumeId]);
+
+  if (state.loading) return <Spinner />;
+  if (state.error) return <Alert>{state.error}</Alert>;
+  const { quality_score: quality, tips } = state.data;
+  const tone = quality >= 80 ? "good" : quality >= 55 ? "fair" : "poor";
+  return (
+    <div className="resume-insights" aria-live="polite">
+      <div className="resume-quality">
+        <div className="resume-quality-head">
+          <h3>Chất lượng CV</h3>
+          <strong className={`resume-quality-score ${tone}`}>{quality}/100</strong>
+        </div>
+        <div className="resume-quality-bar" role="progressbar" aria-valuenow={quality} aria-valuemin={0} aria-valuemax={100}>
+          <span className={tone} style={{ width: `${quality}%` }} />
+        </div>
+      </div>
+      {tips.length === 0 ? (
+        <p className="resume-insight-ok">
+          <CheckCircle2 size={17} aria-hidden="true" /> CV của bạn đã đầy đủ các mục chính mà hệ thống kiểm tra.
+        </p>
+      ) : (
+        <ul className="resume-tip-list">
+          {tips.slice(0, 5).map((tip) => (
+            <li key={tip.code}>
+              <span className={`tip-severity ${tip.severity}`}>{TIP_SEVERITY[tip.severity]}</span>
+              <span>{tip.message}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function ResumeManager() {
   const [resumes, setResumes] = useState([]);
   const [error, setError] = useState("");
@@ -626,13 +676,17 @@ function ResumeManager() {
               <strong>{current && experience > 0 ? `${formatNumber(experience)} năm` : "--"}</strong>
             </div>
           </div>
-          <div className="resume-tip">
-            <Lightbulb size={23} aria-hidden="true" />
-            <div>
-              <h3>Mẹo để có CV tốt hơn</h3>
-              <p>Hãy cập nhật CV thường xuyên để AI có thể phân tích chính xác và gợi ý những cơ hội phù hợp nhất cho bạn.</p>
+          {current ? (
+            <ResumeInsights resumeId={current.id} />
+          ) : (
+            <div className="resume-tip">
+              <Lightbulb size={23} aria-hidden="true" />
+              <div>
+                <h3>Mẹo để có CV tốt hơn</h3>
+                <p>Hãy cập nhật CV thường xuyên để AI có thể phân tích chính xác và gợi ý những cơ hội phù hợp nhất cho bạn.</p>
+              </div>
             </div>
-          </div>
+          )}
         </aside>
       </div>
 
@@ -1108,12 +1162,38 @@ function Recommendations() {
               right={<span className="badge score-badge">{formatPercent(item.final_score)} phù hợp</span>}
             >
               <p className="job-desc">{item.job.description}</p>
+              {item.matched_skills?.length > 0 && (
+                <p className="job-meta matched-skills">
+                  <strong>Kỹ năng khớp:</strong> {item.matched_skills.join(", ")}
+                </p>
+              )}
+              {item.partial_skills?.length > 0 && (
+                <p className="job-meta partial-skills">
+                  <strong>Khớp một phần:</strong> {item.partial_skills.join(", ")}
+                </p>
+              )}
               {item.missing_skills.length > 0 && (
                 <p className="job-meta missing-skills">
-                  <strong>Kỹ năng còn thiếu:</strong> {item.missing_skills.join(", ")}
+                  <strong>Kỹ năng còn thiếu:</strong>{" "}
+                  {item.missing_skills
+                    .map((skill) => (item.preferred_skills?.includes(skill) ? `${skill} (ưu tiên)` : skill))
+                    .join(", ")}
                 </p>
               )}
               <p className="job-meta explanation">{item.explanation}</p>
+              {item.evidence && Object.keys(item.evidence).length > 0 && (
+                <details className="ai-evidence">
+                  <summary>Bằng chứng trong CV của bạn</summary>
+                  <ul>
+                    {Object.entries(item.evidence).slice(0, 4).map(([skill, snippet]) => (
+                      <li key={skill}>
+                        <strong>{skill}</strong>
+                        <span>{snippet}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              )}
             </Card>
           ))}
         </div>
