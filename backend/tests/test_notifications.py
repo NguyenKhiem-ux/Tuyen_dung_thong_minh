@@ -116,7 +116,7 @@ class NotificationFlowTests(unittest.TestCase):
         application = self.create_application()
         update_application_status(
             application.id,
-            ApplicationStatusUpdateIn(status="screening"),
+            ApplicationStatusUpdateIn(status="screening", candidate_message="Hồ sơ đã được tiếp nhận."),
             self.db,
             self.recruiter,
         )
@@ -134,6 +134,8 @@ class NotificationFlowTests(unittest.TestCase):
         ])
         self.assertIn("sàng lọc", notifications[0].title)
         self.assertIn("phỏng vấn", notifications[1].title)
+        self.assertIn("Hồ sơ đã được tiếp nhận.", notifications[0].message)
+        self.assertEqual([item.application_id for item in notifications], [application.id, application.id])
 
     def test_interview_schedule_and_cancel_notify_once(self):
         application = self.create_application(status="interview")

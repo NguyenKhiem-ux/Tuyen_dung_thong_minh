@@ -2,9 +2,9 @@ import React, { useState } from "react";
 import api from "../api.js";
 import { Alert } from "./Common.jsx";
 
-export default function AuthForm({ onSuccess, error, setError, initialMode = "login" }) {
+export default function AuthForm({ onSuccess, error, setError, initialMode = "login", initialRole = "candidate" }) {
   const [mode, setMode] = useState(initialMode); // login | register
-  const [form, setForm] = useState({ email: "", password: "", full_name: "", role: "candidate", phone: "" });
+  const [form, setForm] = useState({ email: "", password: "", full_name: "", role: initialRole, phone: "" });
   const [busy, setBusy] = useState(false);
 
   function update(field, value) {

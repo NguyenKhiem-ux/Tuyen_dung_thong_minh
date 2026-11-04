@@ -2,11 +2,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .routers import api
-from .database import Base, engine
-from . import models  # noqa: F401  (ensure models are registered before create_all)
+from .database import Base, assert_schema_current
+from . import models  # noqa: F401  (register models before the read-only schema check)
 from .config import settings
 
-Base.metadata.create_all(bind=engine)
+assert_schema_current(Base.metadata)
 
 app = FastAPI(
     title="Smart Recruitment AI",
@@ -21,7 +21,7 @@ app = FastAPI(
 # =========================
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.ALLOWED_ORIGINS,
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

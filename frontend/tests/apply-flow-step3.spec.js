@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import { expect, test } from "@playwright/test";
 
 const apiURL = process.env.TEST_API_URL || "http://127.0.0.1:8000";
-const dbPath = fileURLToPath(new URL("../../backend/smart_recruitment.db", import.meta.url));
+const dbPath = process.env.TEST_DB_PATH || fileURLToPath(new URL("../../backend/smart_recruitment.db", import.meta.url));
 
 function runPython(script, ...args) {
   return execFileSync("python", ["-c", script, dbPath, ...args], { encoding: "utf8" }).trim();

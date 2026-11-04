@@ -1,4 +1,4 @@
-import React, { useEffect, useId, useState } from "react";
+import React, { useEffect, useId, useRef, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -23,6 +23,7 @@ import {
   X,
 } from "lucide-react";
 import api from "../api.js";
+import { isNewJob, isRemoteJob, postedLabel } from "../homeData.js";
 import { candidateRoutes, Link, loginPath, navigate } from "../navigation.jsx";
 
 export function useJobs(q = "", location = "") {
@@ -46,7 +47,15 @@ export function useJobs(q = "", location = "") {
   return { ...state, retry: () => setAttempt((value) => value + 1) };
 }
 
-export function JobSearchBar({ q = "", location = "", locations = [], extraParams = {} }) {
+const EMPLOYMENT_OPTIONS = [
+  ["full-time", "Toàn thời gian"],
+  ["part-time", "Bán thời gian"],
+  ["internship", "Thực tập"],
+  ["contract", "Hợp đồng"],
+  ["freelance", "Tự do"],
+];
+
+export function JobSearchBar({ q = "", location = "", locations = [], extraParams = {}, withEmployment = false }) {
   const id = useId();
   return (
     <form
@@ -76,6 +85,20 @@ export function JobSearchBar({ q = "", location = "", locations = [], extraParam
           ))}
         </datalist>
       </label>
+      {withEmployment && (
+        <label className="home-search-type">
+          <BriefcaseBusiness size={20} aria-hidden="true" />
+          <span className="sr-only">Hình thức làm việc</span>
+          <select name="employment" defaultValue="">
+            <option value="">Mọi hình thức</option>
+            {EMPLOYMENT_OPTIONS.map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       <button type="submit" className="home-button">
         <Search size={18} aria-hidden="true" />
         Tìm kiếm
@@ -134,8 +157,12 @@ export function CompanyMark({ job }) {
   );
 }
 
-export function JobCard({ job, compact = false }) {
+export function JobCard({ job, compact = false, hot = false }) {
   const skills = splitSkills(job.skills);
+  const fresh = isNewJob(job);
+  const remote = isRemoteJob(job);
+  const posted = postedLabel(job);
+  const applicants = Number(job.applicants_count) || 0;
   return (
     <article className={`home-job-card ${compact ? "compact" : ""}`}>
       <div className="home-job-heading">
@@ -156,6 +183,13 @@ export function JobCard({ job, compact = false }) {
           <Bookmark size={17} />
         </button>
       </div>
+      {(hot || fresh || remote) && (
+        <div className="job-badges">
+          {hot && <span className="job-badge hot">Hot</span>}
+          {fresh && <span className="job-badge new">Mới</span>}
+          {remote && <span className="job-badge remote">Remote</span>}
+        </div>
+      )}
       <div className="home-job-meta">
         <span>
           <MapPin size={14} aria-hidden="true" />
@@ -170,7 +204,7 @@ export function JobCard({ job, compact = false }) {
         <Wallet size={15} aria-hidden="true" />
         {job.salary_range || "Thỏa thuận"}
       </p>
-      {!compact && (
+      {!compact && skills.length > 0 && (
         <div className="home-job-skills">
           {skills.slice(0, 4).map((skill, index) => (
             <span key={`${skill}-${index}`}>{skill}</span>
@@ -178,15 +212,28 @@ export function JobCard({ job, compact = false }) {
         </div>
       )}
       {!compact && (
-        <Link className="home-job-detail-link" href={`/jobs/${job.id}`}>
-          Xem chi tiết <ArrowRight size={15} aria-hidden="true" />
-        </Link>
+        <div className="home-job-footer">
+          <span className="home-job-posted">
+            {applicants > 0 && (
+              <>
+                <Users size={13} aria-hidden="true" />
+                {applicants} ứng viên
+                {posted && " · "}
+              </>
+            )}
+            {posted}
+          </span>
+          <Link className="home-job-detail-link" href={`/jobs/${job.id}`}>
+            Xem chi tiết <ArrowRight size={15} aria-hidden="true" />
+          </Link>
+        </div>
       )}
+      {compact && posted && <p className="home-job-posted compact-posted">{posted}</p>}
     </article>
   );
 }
 
-export function JobGrid({ jobs, loading, error, retry, compact = false, count = 3 }) {
+export function JobGrid({ jobs, loading, error, retry, compact = false, count = 3, hotIds }) {
   if (error)
     return (
       <div className="jobs-feedback" role="alert">
@@ -221,7 +268,7 @@ export function JobGrid({ jobs, loading, error, retry, compact = false, count = 
           ))}
         </>
       ) : (
-        jobs.map((job) => <JobCard key={job.id} job={job} compact={compact} />)
+        jobs.map((job) => <JobCard key={job.id} job={job} compact={compact} hot={Boolean(hotIds?.has(job.id))} />)
       )}
     </div>
   );
@@ -239,16 +286,13 @@ function useCandidateJobContext(user) {
       };
     }
 
-    Promise.allSettled([api.myApplications(), api.recommendations(100)]).then(([applications, recommendations]) => {
-      if (!alive) return;
-      const appliedIds = new Set(applications.status === "fulfilled" ? applications.value.map((item) => item.job_id) : []);
-      const matches = Object.fromEntries(
-        recommendations.status === "fulfilled"
-          ? recommendations.value.map((item) => [item.job.id, item])
-          : [],
-      );
-      setContext({ appliedIds, matches });
-    });
+    api.myApplications().then(
+      (applications) => {
+        if (!alive) return;
+        setContext({ appliedIds: new Set(applications.map((item) => item.job_id)), matches: {} });
+      },
+      () => alive && setContext({ appliedIds: new Set(), matches: {} }),
+    );
 
     return () => {
       alive = false;
@@ -677,6 +721,59 @@ function ApplyModal({ modal, onClose }) {
   );
 }
 
+function AIMatchModal({ open, resumes, selectedResumeId, loading, busy, error, onSelect, onClose, onAnalyze }) {
+  if (!open) return null;
+  return (
+    <div className="apply-modal-backdrop" role="presentation">
+      <div className="apply-modal ai-match-modal" role="dialog" aria-modal="true" aria-labelledby="ai-match-modal-title">
+        <button className="icon-button apply-modal-close" type="button" onClick={onClose} aria-label="Đóng">
+          <X size={18} />
+        </button>
+        <span className="apply-modal-icon success"><Sparkles size={30} /></span>
+        <h2 id="ai-match-modal-title">Chấm điểm CV với AI</h2>
+        {loading ? (
+          <p role="status">Đang tải thư viện CV...</p>
+        ) : error && resumes.length === 0 ? (
+          <>
+            <p className="ai-match-error" role="alert">{error}</p>
+            <div className="apply-modal-actions">
+              <button className="home-button" type="button" onClick={onClose}>Đóng</button>
+            </div>
+          </>
+        ) : resumes.length === 0 ? (
+          <>
+            <p>Bạn chưa có CV. Hãy tải CV hoặc tạo CV trực tuyến trước khi chấm điểm.</p>
+            <div className="apply-modal-actions">
+              <Link className="home-button secondary" href={candidateRoutes.resume}>Tải CV</Link>
+              <Link className="home-button" href={`${candidateRoutes.resume}?view=builder`}>Tạo CV trực tuyến</Link>
+            </div>
+          </>
+        ) : (
+          <>
+            <label className="ai-match-resume-select">
+              <span>Chọn CV cần đánh giá</span>
+              <select value={selectedResumeId} onChange={(event) => onSelect(event.target.value)} disabled={busy}>
+                {resumes.map((resume) => (
+                  <option key={resume.id} value={resume.id}>
+                    {resume.filename}{resume.is_active ? " — Đang sử dụng" : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {error && <p className="ai-match-error" role="alert">{error}</p>}
+            <div className="apply-modal-actions">
+              <button className="home-button secondary" type="button" onClick={onClose} disabled={busy}>Hủy</button>
+              <button className="home-button" type="button" onClick={onAnalyze} disabled={busy || !selectedResumeId}>
+                {busy ? "Đang chấm điểm..." : "Chấm điểm CV"}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function JobDetailPage({ id, user, authLoading }) {
   const [state, setState] = useState({ job: null, loading: true, error: null });
   const [attempt, setAttempt] = useState(0);
@@ -684,6 +781,13 @@ export function JobDetailPage({ id, user, authLoading }) {
   const [applied, setApplied] = useState(false);
   const [closedByServer, setClosedByServer] = useState(false);
   const [modal, setModal] = useState(null);
+  const [aiModalOpen, setAiModalOpen] = useState(false);
+  const [aiResumes, setAiResumes] = useState([]);
+  const [selectedResumeId, setSelectedResumeId] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiError, setAiError] = useState("");
+  const aiRequestRef = useRef(false);
 
   useEffect(() => {
     let alive = true;
@@ -731,6 +835,61 @@ export function JobDetailPage({ id, user, authLoading }) {
       setModal(nextModal);
     } finally {
       setApplying(false);
+    }
+  }
+
+  async function openAIMatch() {
+    if (!open || authLoading || aiLoading || aiBusy) return;
+    if (!user) return navigate(loginPath(`/jobs/${id}`));
+    if (user.role !== "candidate") return;
+    setAiModalOpen(true);
+    setAiLoading(true);
+    setAiError("");
+    try {
+      const resumes = await api.myResumes();
+      const items = Array.isArray(resumes) ? resumes : [];
+      setAiResumes(items);
+      const preferred = items.find((resume) => resume.is_active) || items[0];
+      setSelectedResumeId(preferred ? String(preferred.id) : "");
+    } catch (error) {
+      if (error.status === 401) return navigate(loginPath(`/jobs/${id}`));
+      setAiError(error.message || "Không thể tải thư viện CV lúc này.");
+    } finally {
+      setAiLoading(false);
+    }
+  }
+
+  async function analyzeWithAI() {
+    if (!selectedResumeId || aiRequestRef.current) return;
+    aiRequestRef.current = true;
+    setAiBusy(true);
+    setAiError("");
+    try {
+      const result = await api.recommendations({
+        resume_id: Number(selectedResumeId),
+        position: job.title,
+        mode: "single",
+        job_id: Number(id),
+        limit: 1,
+      });
+      const selectedResume = aiResumes.find((resume) => String(resume.id) === selectedResumeId);
+      try {
+        sessionStorage.setItem(
+          `sra_ai_match:${user.id}:${id}:${selectedResumeId}`,
+          JSON.stringify({ result, resume_filename: selectedResume?.filename || `CV #${selectedResumeId}` }),
+        );
+      } catch {
+        // The result page can refetch from job_id/resume_id when session storage is unavailable.
+      }
+      const params = new URLSearchParams({ job_id: String(id), resume_id: selectedResumeId });
+      navigate(`${candidateRoutes.recommendations}?${params}`);
+    } catch (error) {
+      if (error.status === 401) return navigate(loginPath(`/jobs/${id}`));
+      if (error.status === 404 && /job/i.test(error.message || "")) setClosedByServer(true);
+      setAiError(error.message || "Không thể chấm điểm CV lúc này.");
+    } finally {
+      aiRequestRef.current = false;
+      setAiBusy(false);
     }
   }
 
@@ -793,6 +952,17 @@ export function JobDetailPage({ id, user, authLoading }) {
               <Send size={18} aria-hidden="true" />
               {applyLabel}
             </button>
+            {(!user || user.role === "candidate") && (
+              <button
+                className="home-button secondary detail-ai-button"
+                type="button"
+                disabled={authLoading || aiLoading || aiBusy || !open}
+                onClick={openAIMatch}
+              >
+                <Sparkles size={18} aria-hidden="true" />
+                {aiLoading ? "Đang tải CV..." : "Chấm điểm CV với AI"}
+              </button>
+            )}
           </div>
         </div>
       </section>
@@ -852,6 +1022,17 @@ export function JobDetailPage({ id, user, authLoading }) {
         </aside>
       </div>
       <ApplyModal modal={modal} onClose={() => setModal(null)} />
+      <AIMatchModal
+        open={aiModalOpen}
+        resumes={aiResumes}
+        selectedResumeId={selectedResumeId}
+        loading={aiLoading}
+        busy={aiBusy}
+        error={aiError}
+        onSelect={setSelectedResumeId}
+        onClose={() => !aiBusy && setAiModalOpen(false)}
+        onAnalyze={analyzeWithAI}
+      />
     </main>
   );
 }

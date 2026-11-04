@@ -1,7 +1,14 @@
-.venv/
+.venv*/
 __pycache__/
-*.pyc
+*.py[cod]
+.pytest_cache/
 *.db
+*.db.bak*
+*.sqlite
+*.sqlite3
+backups/
 uploads/*
 !uploads/.gitkeep
 .env
+.env.*
+!.env.example

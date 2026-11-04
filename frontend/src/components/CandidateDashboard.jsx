@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
+  ArrowLeft,
   BarChart3,
   Building2,
   Briefcase,
@@ -27,6 +28,7 @@ import {
 import api from "../api.js";
 import { Card, EmptyState, Alert, Spinner } from "./Common.jsx";
 import CandidateHero from "./CandidateHero.jsx";
+import CVBuilder from "./CVBuilder.jsx";
 import { Link } from "../navigation.jsx";
 
 const EMPTY_STATS = {
@@ -53,7 +55,7 @@ export default function CandidateDashboard({ user, activeTab = "overview", onTab
         <CandidateOverview user={user} onNavigate={onTabChange} />
       ) : (
         <section className="candidate-section">
-          <ActiveTab />
+          <ActiveTab user={user} />
         </section>
       )}
     </div>
@@ -65,7 +67,6 @@ function CandidateOverview({ user, onNavigate }) {
     loading: true,
     stats: EMPTY_STATS,
     interviews: [],
-    recommendations: [],
     errors: {},
   });
 
@@ -73,10 +74,9 @@ function CandidateOverview({ user, onNavigate }) {
     let alive = true;
 
     async function loadOverview() {
-      const [statsResult, interviewsResult, recommendationsResult] = await Promise.allSettled([
+      const [statsResult, interviewsResult] = await Promise.allSettled([
         api.candidateStats(),
         api.myInterviews(),
-        api.recommendations(3),
       ]);
 
       if (!alive) return;
@@ -85,15 +85,7 @@ function CandidateOverview({ user, onNavigate }) {
       const stats = readResult(statsResult, EMPTY_STATS, errors, "stats");
       const interviews = readResult(interviewsResult, [], errors, "interviews");
 
-      let recommendations = [];
-      if (recommendationsResult.status === "fulfilled") {
-        recommendations = recommendationsResult.value || [];
-      } else {
-        const message = recommendationsResult.reason?.message || "Không tải được gợi ý việc làm.";
-        if (!/upload|cv|resume/i.test(message)) errors.recommendations = message;
-      }
-
-      setState({ loading: false, stats: stats || EMPTY_STATS, interviews, recommendations, errors });
+      setState({ loading: false, stats: stats || EMPTY_STATS, interviews, errors });
     }
 
     loadOverview();
@@ -119,7 +111,7 @@ function CandidateOverview({ user, onNavigate }) {
           <div className="overview-columns">
             <ApplicationStatusCard stats={state.stats} onNavigate={onNavigate} />
             <UpcomingInterviewCard interview={upcomingInterviews[0]} error={state.errors.interviews} onNavigate={onNavigate} />
-            <RecommendedJobsCard items={state.recommendations} error={state.errors.recommendations} onNavigate={onNavigate} />
+            <RecommendedJobsCard onNavigate={onNavigate} />
           </div>
         </>
       )}
@@ -306,45 +298,11 @@ function UpcomingInterviewCard({ interview, error, onNavigate }) {
   );
 }
 
-function RecommendedJobsCard({ items, error, onNavigate }) {
+function RecommendedJobsCard({ onNavigate }) {
   return (
     <section className="overview-panel">
-      <PanelHeader title="Việc làm đề xuất cho bạn" action="Xem thêm" onClick={() => onNavigate("recommendations")} />
-      {error && <Alert>{error}</Alert>}
-      {items.length === 0 ? (
-        <EmptyState text="Chưa có gợi ý phù hợp. Hãy tải CV lên để nhận đề xuất từ AI." />
-      ) : (
-        <div className="recommended-list">
-          {items.map((item) => {
-            const job = item.job || {};
-            return (
-              <button key={job.id || job.title} className="recommended-job" type="button" onClick={() => onNavigate("recommendations")}>
-                <span className="job-icon">▥</span>
-                <span className="job-summary">
-                  <span className="job-title-line">
-                    <strong>{job.title || "Công việc phù hợp"}</strong>
-                    <em>{formatPercent(item.final_score)} phù hợp</em>
-                  </span>
-                  <span className="job-company">
-                    {job.company_name || "Chưa cập nhật"} · {job.location || "Remote"}
-                  </span>
-                  <span className="skill-tags">
-                    {splitSkills(job.skills)
-                      .slice(0, 5)
-                      .map((skill) => (
-                        <span key={skill}>{skill}</span>
-                      ))}
-                  </span>
-                  <span className="job-foot">
-                    {job.employment_type || "Toàn thời gian"} · {job.location || "Remote"}
-                  </span>
-                </span>
-                <span className="chevron">›</span>
-              </button>
-            );
-          })}
-        </div>
-      )}
+      <PanelHeader title="Gợi ý việc làm bằng AI" action="Bắt đầu" onClick={() => onNavigate("recommendations")} />
+      <EmptyState text="Chọn CV và vị trí mong muốn để AI chỉ phân tích những công việc liên quan." />
     </section>
   );
 }
@@ -496,8 +454,59 @@ function JobSearch() {
   );
 }
 
-function ResumeManager() {
+const TIP_SEVERITY = { high: "Quan trọng", medium: "Nên làm", low: "Gợi ý" };
+
+function ResumeInsights({ resumeId }) {
+  const [state, setState] = useState({ loading: true, data: null, error: "" });
+
+  useEffect(() => {
+    let active = true;
+    setState({ loading: true, data: null, error: "" });
+    api
+      .resumeInsights()
+      .then((data) => active && setState({ loading: false, data, error: "" }))
+      .catch((e) => active && setState({ loading: false, data: null, error: e.message || "Không tải được phân tích CV." }));
+    return () => {
+      active = false;
+    };
+  }, [resumeId]);
+
+  if (state.loading) return <Spinner />;
+  if (state.error) return <Alert>{state.error}</Alert>;
+  const { quality_score: quality, tips } = state.data;
+  const tone = quality >= 80 ? "good" : quality >= 55 ? "fair" : "poor";
+  return (
+    <div className="resume-insights" aria-live="polite">
+      <div className="resume-quality">
+        <div className="resume-quality-head">
+          <h3>Chất lượng CV</h3>
+          <strong className={`resume-quality-score ${tone}`}>{quality}/100</strong>
+        </div>
+        <div className="resume-quality-bar" role="progressbar" aria-valuenow={quality} aria-valuemin={0} aria-valuemax={100}>
+          <span className={tone} style={{ width: `${quality}%` }} />
+        </div>
+      </div>
+      {tips.length === 0 ? (
+        <p className="resume-insight-ok">
+          <CheckCircle2 size={17} aria-hidden="true" /> CV của bạn đã đầy đủ các mục chính mà hệ thống kiểm tra.
+        </p>
+      ) : (
+        <ul className="resume-tip-list">
+          {tips.slice(0, 5).map((tip) => (
+            <li key={tip.code}>
+              <span className={`tip-severity ${tip.severity}`}>{TIP_SEVERITY[tip.severity]}</span>
+              <span>{tip.message}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function ResumeManager({ user }) {
   const [resumes, setResumes] = useState([]);
+  const [view, setView] = useState(() => new URLSearchParams(window.location.search).get("view") === "builder" ? "builder" : "library");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
@@ -554,7 +563,22 @@ function ResumeManager() {
     if (!busy) upload(e.dataTransfer.files[0]);
   }
 
-  const current = resumes[0];
+  async function activate(resumeId) {
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      await api.activateResume(resumeId);
+      setMessage("Đã chọn CV để ứng tuyển và nhận gợi ý AI.");
+      load();
+    } catch (err) {
+      setError(err.message || "Không thể chọn CV này.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const current = resumes.find((resume) => resume.is_active) || resumes[0];
   const skills = Array.isArray(current?.skills) ? current.skills.filter(Boolean) : [];
   const education = Array.isArray(current?.education) ? current.education.filter(Boolean) : [];
   const projects = Array.isArray(current?.projects) ? current.projects.filter(Boolean) : [];
@@ -575,6 +599,13 @@ function ResumeManager() {
             <span>Gợi ý việc phù hợp</span>
           </div>
       </CandidateHero>
+
+      <ResumeModeTabs view={view} onChange={setView} />
+
+      {view === "builder" ? (
+        <CVBuilder user={user} onSavedToResumes={load} />
+      ) : (
+        <>
 
       <div className="resume-layout">
         <section className="resume-card resume-upload-card">
@@ -603,7 +634,7 @@ function ResumeManager() {
           <Alert>{error}</Alert>
           <div className="resume-info-bar">
             <Info size={17} aria-hidden="true" />
-            <span>CV mới nhất bạn tải lên sẽ được sử dụng khi ứng tuyển.</span>
+            <span>CV đang được chọn sẽ được sử dụng khi ứng tuyển và nhận gợi ý AI.</span>
           </div>
         </section>
 
@@ -626,13 +657,17 @@ function ResumeManager() {
               <strong>{current && experience > 0 ? `${formatNumber(experience)} năm` : "--"}</strong>
             </div>
           </div>
-          <div className="resume-tip">
-            <Lightbulb size={23} aria-hidden="true" />
-            <div>
-              <h3>Mẹo để có CV tốt hơn</h3>
-              <p>Hãy cập nhật CV thường xuyên để AI có thể phân tích chính xác và gợi ý những cơ hội phù hợp nhất cho bạn.</p>
+          {current ? (
+            <ResumeInsights resumeId={current.id} />
+          ) : (
+            <div className="resume-tip">
+              <Lightbulb size={23} aria-hidden="true" />
+              <div>
+                <h3>Mẹo để có CV tốt hơn</h3>
+                <p>Hãy cập nhật CV thường xuyên để AI có thể phân tích chính xác và gợi ý những cơ hội phù hợp nhất cho bạn.</p>
+              </div>
             </div>
-          </div>
+          )}
         </aside>
       </div>
 
@@ -644,6 +679,30 @@ function ResumeManager() {
           <span>Bạn chưa tải lên CV nào. Hãy chọn file PDF hoặc DOCX để AI phân tích hồ sơ.</span>
         </div>
       ) : (
+        <>
+        <section className="resume-card resume-library-card">
+          <header className="resume-card-title">
+            <span className="resume-section-icon"><FileText size={22} aria-hidden="true" /></span>
+            <div>
+              <h2>Danh sách CV</h2>
+              <p>Chọn CV sẽ được sử dụng khi ứng tuyển và nhận gợi ý việc làm.</p>
+            </div>
+          </header>
+          <div className="resume-library-list">
+            {resumes.map((resume) => (
+              <article key={resume.id} className={resume.id === current.id ? "is-active" : ""}>
+                <span className={`resume-file-icon ${fileKind(resume.filename)}`}><FileText size={21} /></span>
+                <div><strong>{resume.filename}</strong><span>{formatDate(resume.created_at)}</span></div>
+                {resume.id === current.id ? (
+                  <span className="resume-active-badge"><CheckCircle2 size={14} /> Đang sử dụng</span>
+                ) : (
+                  <button className="btn-ghost" type="button" disabled={busy} onClick={() => activate(resume.id)}>Dùng CV này</button>
+                )}
+              </article>
+            ))}
+          </div>
+        </section>
+
         <section className="resume-card resume-current-card">
           <header className="resume-current-header">
             <div className="resume-file-heading">
@@ -708,7 +767,23 @@ function ResumeManager() {
             </section>
           </div>
         </section>
+        </>
       )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function ResumeModeTabs({ view, onChange }) {
+  return (
+    <div className="resume-mode-tabs" role="tablist" aria-label="Quản lý CV">
+      <button type="button" role="tab" aria-selected={view === "library"} className={view === "library" ? "is-active" : ""} onClick={() => onChange("library")}>
+        <FileText size={18} /> CV của tôi
+      </button>
+      <button type="button" role="tab" aria-selected={view === "builder"} className={view === "builder" ? "is-active" : ""} onClick={() => onChange("builder")}>
+        <Sparkles size={18} /> Tạo CV trực tuyến
+      </button>
     </div>
   );
 }
@@ -736,6 +811,7 @@ function MyApplications() {
   const [state, setState] = useState({ loading: true, apps: [], jobs: {}, interviews: [], histories: {} });
   const [error, setError] = useState("");
   const [filter, setFilter] = useState("all");
+  const focusedApplicationId = new URLSearchParams(window.location.search).get("application");
 
   useEffect(() => {
     let alive = true;
@@ -777,6 +853,13 @@ function MyApplications() {
       alive = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (state.loading || !focusedApplicationId) return;
+    const card = document.getElementById(`application-${focusedApplicationId}`);
+    card?.scrollIntoView({ behavior: "smooth", block: "center" });
+    card?.focus({ preventScroll: true });
+  }, [focusedApplicationId, state.loading]);
 
   const counts = applicationFilterCounts(state.apps);
   const filters = APPLICATION_FILTERS.map((item) => ({ ...item, count: counts[item.key] || 0 }));
@@ -869,15 +952,25 @@ const APPLICATION_STAGES = [
   { key: "result", label: "Kết quả", icon: Check },
 ];
 
+const APPLICATION_EVENT_LABELS = {
+  applied: "Đã ứng tuyển",
+  screening: "Sàng lọc",
+  interview: "Phỏng vấn",
+  offer: "Offer",
+  hired: "Đã tuyển",
+  rejected: "Không phù hợp",
+};
+
 function ApplicationCard({ application, job, interview, history }) {
   const status = application.status || "applied";
   const company = job?.company_name || "Nhà tuyển dụng";
   const location = job?.location || "Chưa cập nhật";
   const employmentType = job?.employment_type || "Chưa cập nhật";
   const hasInterview = status === "interview" && interview;
+  const timeline = buildApplicationTimeline(application, history);
 
   return (
-    <article className={`application-card application-status-${status}`}>
+    <article id={`application-${application.id}`} className={`application-card application-status-${status}`} tabIndex={-1}>
       <header className="application-card-header">
         <div className="application-heading">
           <span className="application-company-icon">
@@ -919,7 +1012,8 @@ function ApplicationCard({ application, job, interview, history }) {
         </div>
       </header>
 
-      <ApplicationTimeline application={application} history={history} />
+      <ApplicationTimeline timeline={timeline} />
+      <ApplicationMessages messages={timeline.messages} applicationId={application.id} />
 
       <div className="application-panels">
         <section className="application-panel">
@@ -992,11 +1086,26 @@ export function buildApplicationTimeline(application, history = []) {
       };
     }),
     rejectionReason: terminalStatus === "rejected" ? rejectedEvent?.reason : null,
+    messages: history
+      .filter((item) => (
+        (!item.application_id || item.application_id === application.id) && item.candidate_message?.trim()
+      ))
+      .sort((left, right) => (
+        String(left.changed_at).localeCompare(String(right.changed_at)) || Number(left.id) - Number(right.id)
+      ))
+      .map((item) => ({
+        id: item.id,
+        title: APPLICATION_EVENT_LABELS[item.new_status] || item.new_status,
+        event: item.old_status === item.new_status ? "Lời nhắn ở trạng thái hiện tại" : "Cập nhật trạng thái",
+        message: item.candidate_message.trim(),
+        changedAt: item.changed_at,
+        sender: item.changed_by_name,
+      })),
   };
 }
 
-function ApplicationTimeline({ application, history }) {
-  const { stages, rejectionReason } = buildApplicationTimeline(application, history);
+function ApplicationTimeline({ timeline }) {
+  const { stages, rejectionReason } = timeline;
 
   return (
     <section className="application-timeline">
@@ -1021,6 +1130,32 @@ function ApplicationTimeline({ application, history }) {
         })}
       </div>
       {rejectionReason && <p className="application-reason">Lý do: {rejectionReason}</p>}
+    </section>
+  );
+}
+
+function ApplicationMessages({ messages, applicationId }) {
+  const headingId = `application-messages-${applicationId}`;
+
+  return (
+    <section className="application-messages" aria-labelledby={headingId}>
+      <h3 id={headingId}>
+        <Send size={22} aria-hidden="true" />
+        Lời nhắn từ nhà tuyển dụng
+      </h3>
+      {messages.length === 0 ? (
+        <p className="application-message-empty">Chưa có lời nhắn nào từ nhà tuyển dụng.</p>
+      ) : (
+        <div className="application-message-list">
+          {messages.map((item) => (
+            <article key={item.id} className="application-message">
+              <strong>{item.title} — {item.event}</strong>
+              <p>{item.message}</p>
+              <small>{shortDateTime(item.changedAt)}{item.sender ? ` · ${item.sender}` : ""}</small>
+            </article>
+          ))}
+        </div>
+      )}
     </section>
   );
 }
@@ -1067,80 +1202,475 @@ function shortDate(value) {
   return date.toLocaleDateString("vi-VN");
 }
 
-function Recommendations() {
-  const [items, setItems] = useState([]);
+function shortDateTime(value) {
+  if (!value) return "Chưa có thông tin";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Chưa có thông tin";
+  return date.toLocaleString("vi-VN", { dateStyle: "short", timeStyle: "short" });
+}
+
+function Recommendations({ user }) {
+  const contextParams = new URLSearchParams(window.location.search);
+  const contextJobId = Number(contextParams.get("job_id"));
+  const contextResumeId = Number(contextParams.get("resume_id"));
+  const hasJobContext = Number.isInteger(contextJobId) && contextJobId > 0
+    && Number.isInteger(contextResumeId) && contextResumeId > 0;
+  const [resumes, setResumes] = useState([]);
+  const [positions, setPositions] = useState([]);
+  const [resumeId, setResumeId] = useState(hasJobContext ? String(contextResumeId) : "");
+  const [contextResumeName, setContextResumeName] = useState("");
+  const [position, setPosition] = useState("");
+  const [result, setResult] = useState(null);
   const [error, setError] = useState("");
-  const [loaded, setLoaded] = useState(false);
+  const [message, setMessage] = useState("");
+  const [loadingOptions, setLoadingOptions] = useState(true);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [applyingId, setApplyingId] = useState(null);
+  const [appliedIds, setAppliedIds] = useState([]);
 
   useEffect(() => {
-    api
-      .recommendations(6)
-      .then((d) => {
-        setItems(d);
-        setLoaded(true);
+    let active = true;
+    if (hasJobContext) {
+      setLoadingOptions(false);
+      setAnalyzing(true);
+      const storageKey = `sra_ai_match:${user.id}:${contextJobId}:${contextResumeId}`;
+      try {
+        const cached = JSON.parse(sessionStorage.getItem(storageKey));
+        if (Number(cached?.result?.items?.[0]?.job?.id) === contextJobId) {
+          setResult(cached.result);
+          setContextResumeName(cached.resume_filename || `CV #${contextResumeId}`);
+          setAnalyzing(false);
+          return () => {
+            active = false;
+          };
+        }
+      } catch {
+        sessionStorage.removeItem(storageKey);
+      }
+
+      Promise.all([api.myResumes(), api.getJob(contextJobId)])
+        .then(async ([resumeItems, job]) => {
+          const selectedResume = (resumeItems || []).find((resume) => resume.id === contextResumeId);
+          if (!selectedResume) throw new Error("CV không tồn tại hoặc không thuộc tài khoản hiện tại.");
+          const freshResult = await api.recommendations({
+            resume_id: contextResumeId,
+            position: job.title,
+            mode: "single",
+            job_id: contextJobId,
+            limit: 1,
+          });
+          if (!active) return;
+          setContextResumeName(selectedResume.filename);
+          setResult(freshResult);
+          try {
+            sessionStorage.setItem(storageKey, JSON.stringify({ result: freshResult, resume_filename: selectedResume.filename }));
+          } catch {
+            // Keeping the visible result is enough when session storage is unavailable.
+          }
+        })
+        .catch((e) => active && setError(e.message || "Không thể tải kết quả chấm điểm AI."))
+        .finally(() => active && setAnalyzing(false));
+      return () => {
+        active = false;
+      };
+    }
+
+    Promise.all([api.myResumes(), api.recommendationPositions()])
+      .then(([resumeItems, positionData]) => {
+        if (!active) return;
+        const availableResumes = Array.isArray(resumeItems) ? resumeItems : [];
+        setResumes(availableResumes);
+        setPositions(Array.isArray(positionData?.positions) ? positionData.positions : []);
+        const preferred = availableResumes.find((resume) => resume.is_active) || availableResumes[0];
+        setResumeId(preferred ? String(preferred.id) : "");
       })
-      .catch((e) => {
-        setError(e.message);
-        setLoaded(true);
-      });
+      .catch((e) => active && setError(e.message || "Không tải được dữ liệu để phân tích."))
+      .finally(() => active && setLoadingOptions(false));
+    return () => {
+      active = false;
+    };
   }, []);
+
+  function clearResult() {
+    setResult(null);
+    setError("");
+    setMessage("");
+  }
+
+  async function analyze(event) {
+    event.preventDefault();
+    if (!resumeId || !position) return;
+    setAnalyzing(true);
+    setError("");
+    setMessage("");
+    setResult(null);
+    try {
+      setResult(await api.recommendations({ resume_id: Number(resumeId), position, mode: "position", limit: 6 }));
+    } catch (e) {
+      setError(e.message || "Không thể phân tích CV lúc này.");
+    } finally {
+      setAnalyzing(false);
+    }
+  }
+
+  async function apply(jobIdToApply) {
+    setApplyingId(jobIdToApply);
+    setError("");
+    setMessage("");
+    try {
+      await api.applyToJob(jobIdToApply, Number(resumeId));
+      setAppliedIds((current) => [...current, jobIdToApply]);
+      setMessage("Ứng tuyển thành công. Kết quả AI của đơn ứng tuyển đã được lưu riêng.");
+    } catch (e) {
+      setError(e.message || "Không thể ứng tuyển lúc này.");
+    } finally {
+      setApplyingId(null);
+    }
+  }
+
+  const rankedItems = [...(result?.items || [])].sort(
+    (left, right) => number(right.final_score) - number(left.final_score),
+  );
+  const canAnalyze = Boolean(resumeId && position);
+  const tips = Array.isArray(result?.resume_insights?.tips) ? result.resume_insights.tips : [];
 
   return (
     <div className="recommendations-page">
       <CandidateHero
-        title="Gợi ý AI"
-        description="Khám phá các công việc phù hợp dựa trên CV, kỹ năng và kinh nghiệm của bạn."
+        title="Gợi ý việc làm bằng AI"
+        description={hasJobContext
+          ? "Kết quả AI Matching v3 cho CV và công việc bạn vừa chọn."
+          : "Chọn CV và vị trí để AI gợi ý những tin tuyển dụng phù hợp nhất."}
       />
 
-      {!loaded ? (
-        <Spinner />
-      ) : error ? (
-        <Alert>{error}</Alert>
-      ) : items.length === 0 ? (
-        <EmptyState text="Chưa có gợi ý — hãy tải CV lên để nhận đề xuất từ AI." />
-      ) : (
-        <div className="grid grid-2">
-          {items.map((item) => (
-            <Card
-              key={item.job.id}
-              title={item.job.title}
-              subtitle={`${item.job.company_name || "—"} · ${item.job.location}`}
-              right={<span className="badge score-badge">{formatPercent(item.final_score)} phù hợp</span>}
-            >
-              <p className="job-desc">{item.job.description}</p>
-              {item.missing_skills.length > 0 && (
-                <p className="job-meta missing-skills">
-                  <strong>Kỹ năng còn thiếu:</strong> {item.missing_skills.join(", ")}
-                </p>
-              )}
-              <p className="job-meta explanation">{item.explanation}</p>
-            </Card>
-          ))}
+      {hasJobContext && (
+        <section className="recommendation-context-banner" aria-label="Ngữ cảnh chấm điểm AI">
+          <div>
+            <span><Sparkles size={20} aria-hidden="true" /> Công việc vừa đánh giá</span>
+            <h2>{rankedItems[0]?.job?.title || `Công việc #${contextJobId}`}</h2>
+            <p>CV: {contextResumeName || `#${contextResumeId}`}</p>
+          </div>
+          <Link className="btn-ghost" href={`/jobs/${contextJobId}`}>
+            <ArrowLeft size={17} aria-hidden="true" /> Quay lại chi tiết công việc
+          </Link>
+        </section>
+      )}
+
+      {!hasJobContext && <section className="recommendation-controls" aria-labelledby="recommendation-controls-title">
+        <h2 id="recommendation-controls-title">Thiết lập phân tích</h2>
+        {loadingOptions ? (
+          <Spinner />
+        ) : (
+          <form onSubmit={analyze}>
+            <div className="recommendation-control-grid">
+              <label>
+                <span><strong>1.</strong> CV cần phân tích</span>
+                <select
+                  value={resumeId}
+                  onChange={(event) => {
+                    setResumeId(event.target.value);
+                    clearResult();
+                  }}
+                >
+                  <option value="">Chọn CV</option>
+                  {resumes.map((resume) => (
+                    <option key={resume.id} value={resume.id}>
+                      {resume.filename}{resume.is_active ? " — Đang sử dụng" : ""}
+                    </option>
+                  ))}
+                </select>
+                {resumes.length === 0 && <small>Bạn cần tải hoặc tạo CV trước khi phân tích.</small>}
+              </label>
+
+              <label>
+                <span><strong>2.</strong> Vị trí mong muốn</span>
+                <select
+                  value={position}
+                  onChange={(event) => {
+                    setPosition(event.target.value);
+                    clearResult();
+                  }}
+                >
+                  <option value="">Chọn vị trí</option>
+                  {positions.map((item) => <option key={item} value={item}>{item}</option>)}
+                </select>
+                <small>Danh sách được lấy từ các tin tuyển dụng đang mở mà bạn chưa ứng tuyển.</small>
+              </label>
+            </div>
+
+            <button className="btn-primary recommendation-analyze-button" disabled={!canAnalyze || analyzing}>
+              {analyzing ? "Đang phân tích..." : "Gợi ý việc làm"}
+            </button>
+          </form>
+        )}
+      </section>}
+
+      <Alert type="success">{message}</Alert>
+      <Alert>{error}</Alert>
+
+      {analyzing && (
+        <div className="recommendations-state" aria-live="polite">
+          <Spinner />
+          <p>{hasJobContext ? "AI đang tải kết quả cho công việc đã chọn..." : "AI đang phân tích tập Job đã được lọc..."}</p>
         </div>
       )}
+
+      {result && !analyzing && (
+        <section className="recommendations-summary" aria-label="Tóm tắt gợi ý việc làm">
+          <div>
+            <span className="recommendations-summary-icon" aria-hidden="true">
+              <Sparkles size={22} />
+            </span>
+            <p>
+              <strong>{rankedItems.length}</strong>
+              <span>{hasJobContext ? "kết quả chấm điểm" : "công việc được gợi ý"}</span>
+            </p>
+          </div>
+          <p>
+            <BarChart3 size={18} aria-hidden="true" />
+            Đã chấm {result.analyzed_count} Job trong {formatDuration(result.duration_ms)}
+          </p>
+        </section>
+      )}
+
+      {result && tips.length > 0 && (
+        <section className="recommendation-improvements">
+          <h2><Lightbulb size={20} aria-hidden="true" /> Gợi ý cải thiện CV</h2>
+          <ul>{tips.map((tip) => <li key={tip.code}>{tip.message}</li>)}</ul>
+        </section>
+      )}
+
+      {result && !analyzing && rankedItems.length === 0 ? (
+        <div className="recommendations-state">
+          <EmptyState text="Không còn tin tuyển dụng đang mở phù hợp với lựa chọn này." />
+        </div>
+      ) : result && !analyzing ? (
+        <div className="recommendations-grid">
+          {rankedItems.map((item) => (
+            <RecommendationCard
+              key={item.job.id}
+              item={item}
+              applying={applyingId === item.job.id}
+              applied={appliedIds.includes(item.job.id)}
+              onApply={() => apply(item.job.id)}
+            />
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function RecommendationCard({ item, applying, applied, onApply }) {
+  const job = item.job || {};
+  const matchedSkills = Array.isArray(item.matched_skills) ? item.matched_skills.filter(Boolean) : [];
+  const partialSkills = Array.isArray(item.partial_skills) ? item.partial_skills.filter(Boolean) : [];
+  const missingSkills = Array.isArray(item.missing_skills) ? item.missing_skills.filter(Boolean) : [];
+  const preferredSkills = new Set(Array.isArray(item.preferred_skills) ? item.preferred_skills : []);
+  const evidence = item.evidence && typeof item.evidence === "object" ? Object.entries(item.evidence).slice(0, 4) : [];
+  const score = Math.max(0, Math.min(100, number(item.final_score)));
+  const explanation = typeof item.explanation === "string" ? item.explanation.trim() : "";
+  const scoreBreakdown = [
+    ["Kỹ năng", item.skill_score, "green"],
+    ["Kinh nghiệm", item.experience_score, "blue"],
+    ["Ngữ nghĩa", item.semantic_score, "purple"],
+    ["Dự án", item.project_score, "amber"],
+  ].filter(([, value]) => value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value)));
+
+  return (
+    <article className="recommendation-card" data-testid={`recommendation-card-${job.id}`}>
+      <header className="recommendation-card-header">
+        <span className="recommendation-company-icon" aria-hidden="true">
+          <Building2 size={25} />
+        </span>
+        <div className="recommendation-job-heading">
+          <h2>{job.title || "Công việc phù hợp"}</h2>
+          <p>{job.company_name || "Chưa cập nhật công ty"}</p>
+          <div className="recommendation-job-meta">
+            <span>
+              <MapPin size={15} aria-hidden="true" />
+              {job.location || "Chưa cập nhật"}
+            </span>
+            {job.employment_type && (
+              <span>
+                <Briefcase size={15} aria-hidden="true" />
+                {job.employment_type}
+              </span>
+            )}
+          </div>
+        </div>
+        <div className="recommendation-match-score">
+          <strong>{formatPercent(item.final_score)}</strong>
+          <span>Mức độ phù hợp</span>
+        </div>
+      </header>
+
+      <div
+        className="recommendation-score-track"
+        role="progressbar"
+        aria-label={`Mức độ phù hợp với ${job.title || "công việc"}`}
+        aria-valuemin="0"
+        aria-valuemax="100"
+        aria-valuenow={score}
+      >
+        <span style={{ width: `${score}%` }} />
+      </div>
+
+      {job.description && <p className="recommendation-description">{job.description}</p>}
+
+      <div className="recommendation-skill-grid">
+        {matchedSkills.length > 0 && (
+          <section className="recommendation-skill-section recommendation-matched-skills matched-skills">
+            <h3>Kỹ năng phù hợp</h3>
+            <div>
+              {matchedSkills.map((skill) => (
+                <span key={skill}>{skill}</span>
+              ))}
+            </div>
+          </section>
+        )}
+        {partialSkills.length > 0 && (
+          <section className="recommendation-skill-section recommendation-partial-skills partial-skills">
+            <h3>Khớp một phần</h3>
+            <div>
+              {partialSkills.map((skill) => (
+                <span key={skill}>{skill}</span>
+              ))}
+            </div>
+          </section>
+        )}
+        <section className="recommendation-skill-section recommendation-missing-skills missing-skills">
+          <h3>Kỹ năng cần bổ sung</h3>
+          {missingSkills.length > 0 ? (
+            <div>
+              {missingSkills.map((skill) => (
+                <span key={skill}>{preferredSkills.has(skill) ? `${skill} (ưu tiên)` : skill}</span>
+              ))}
+            </div>
+          ) : (
+            <p>Không có kỹ năng cần bổ sung trong kết quả AI.</p>
+          )}
+        </section>
+      </div>
+
+      {scoreBreakdown.length > 0 && (
+        <section className="recommendation-analysis">
+          <h3>
+            <BarChart3 size={18} aria-hidden="true" />
+            Phân tích điểm AI
+          </h3>
+          <div className="recommendation-score-grid">
+            {scoreBreakdown.map(([label, value, tone]) => (
+              <RecommendationScore key={label} label={label} value={value} tone={tone} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {explanation && (
+        <details className="recommendation-explanation">
+          <summary>
+            <Info size={17} aria-hidden="true" />
+            Xem giải thích chi tiết từ AI
+          </summary>
+          <p>{explanation}</p>
+        </details>
+      )}
+
+      {evidence.length > 0 && (
+        <details className="ai-evidence">
+          <summary>Bằng chứng trong CV của bạn</summary>
+          <ul>
+            {evidence.map(([skill, snippet]) => (
+              <li key={skill}>
+                <strong>{skill}</strong>
+                <span>{snippet}</span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+
+      <div className="recommendation-card-footer">
+        <Link className="recommendation-detail-link" href={`/jobs/${job.id}`}>
+          Xem chi tiết công việc
+          <ExternalLink size={17} aria-hidden="true" />
+        </Link>
+        {job.status === "open" && (
+          <button className="btn-primary" type="button" disabled={applying || applied} onClick={onApply}>
+            {applied ? "Đã ứng tuyển" : applying ? "Đang ứng tuyển..." : "Ứng tuyển"}
+          </button>
+        )}
+      </div>
+    </article>
+  );
+}
+
+function formatDuration(value) {
+  const milliseconds = Number(value);
+  if (!Number.isFinite(milliseconds)) return "--";
+  return milliseconds < 1000 ? `${milliseconds.toFixed(0)} ms` : `${(milliseconds / 1000).toFixed(2)} giây`;
+}
+
+function RecommendationScore({ label, value, tone }) {
+  const score = Math.max(0, Math.min(100, Number(value)));
+  return (
+    <div className={`recommendation-score-row recommendation-score-${tone}`}>
+      <div>
+        <span>{label}</span>
+        <strong>{formatPercent(value)}</strong>
+      </div>
+      <span className="recommendation-score-small-track">
+        <span style={{ width: `${score}%` }} />
+      </span>
     </div>
   );
 }
 
 function MyInterviews() {
   const [items, setItems] = useState([]);
+  const [proposals, setProposals] = useState([]);
+  const [selectedOptions, setSelectedOptions] = useState({});
+  const [confirmingId, setConfirmingId] = useState(null);
   const [error, setError] = useState("");
   const [filter, setFilter] = useState("scheduled");
   const [copiedId, setCopiedId] = useState(null);
   const [loaded, setLoaded] = useState(false);
 
+  async function load() {
+    setError("");
+    try {
+      const [interviews, pendingProposals] = await Promise.all([
+        api.myInterviews(),
+        api.myInterviewProposals(),
+      ]);
+      setItems(interviews || []);
+      setProposals(pendingProposals || []);
+    } catch (e) {
+      setError(e.message || "Không tải được lịch phỏng vấn.");
+    } finally {
+      setLoaded(true);
+    }
+  }
+
   useEffect(() => {
-    api
-      .myInterviews()
-      .then((data) => {
-        setItems(data || []);
-        setLoaded(true);
-      })
-      .catch((e) => {
-        setError(e.message || "Không tải được lịch phỏng vấn.");
-        setLoaded(true);
-      });
+    load();
   }, []);
+
+  async function confirmProposal(proposalId) {
+    const optionId = selectedOptions[proposalId];
+    if (!optionId) return;
+    setConfirmingId(proposalId);
+    setError("");
+    try {
+      await api.confirmInterviewProposal(proposalId, optionId);
+      await load();
+    } catch (e) {
+      setError(e.message || "Không thể xác nhận thời gian phỏng vấn.");
+    } finally {
+      setConfirmingId(null);
+    }
+  }
 
   async function copyLink(interview) {
     if (!isUrl(interview.location)) return;
@@ -1174,6 +1704,30 @@ function MyInterviews() {
           ))}
         </div>
       </CandidateHero>
+
+      {proposals.length > 0 && (
+        <section className="interview-proposals-section" aria-labelledby="pending-proposals-title">
+          <div className="interview-proposals-heading">
+            <div>
+              <span>Yêu cầu xác nhận</span>
+              <h2 id="pending-proposals-title">Chờ bạn xác nhận</h2>
+            </div>
+            <strong>{proposals.length}</strong>
+          </div>
+          <div className="interview-proposals-list">
+            {proposals.map((proposal) => (
+              <CandidateInterviewProposal
+                key={proposal.id}
+                proposal={proposal}
+                selectedOptionId={selectedOptions[proposal.id] || ""}
+                busy={confirmingId === proposal.id}
+                onSelect={(optionId) => setSelectedOptions((current) => ({ ...current, [proposal.id]: optionId }))}
+                onConfirm={() => confirmProposal(proposal.id)}
+              />
+            ))}
+          </div>
+        </section>
+      )}
 
       <div className="interview-filters" role="tablist" aria-label="Lọc lịch phỏng vấn">
         {INTERVIEW_FILTERS.map(({ key, label, icon: Icon }) => (
@@ -1214,6 +1768,52 @@ function MyInterviews() {
         <InterviewTips />
       </div>
     </div>
+  );
+}
+
+function CandidateInterviewProposal({ proposal, selectedOptionId, busy, onSelect, onConfirm }) {
+  const online = proposal.mode === "online";
+  return (
+    <article className="interview-proposal-card" data-testid={`interview-proposal-${proposal.id}`}>
+      <header>
+        <div>
+          <h3>{proposal.job_title}</h3>
+          {proposal.company_name && <p>{proposal.company_name}</p>}
+        </div>
+        <span><Clock3 size={17} aria-hidden="true" /> Chờ xác nhận</span>
+      </header>
+      <div className="interview-proposal-meta">
+        <span><Video size={17} aria-hidden="true" /> {online ? "Trực tuyến" : "Trực tiếp"}</span>
+        <span><Clock3 size={17} aria-hidden="true" /> {proposal.duration_minutes} phút</span>
+        {proposal.location && (
+          <span>
+            <MapPin size={17} aria-hidden="true" />
+            {isUrl(proposal.location) ? <a href={proposal.location} target="_blank" rel="noreferrer">{proposal.location}</a> : proposal.location}
+          </span>
+        )}
+      </div>
+      {proposal.notes && <p className="interview-proposal-note">{proposal.notes}</p>}
+      <fieldset>
+        <legend>Chọn một thời gian phù hợp</legend>
+        {proposal.options.map((option) => (
+          <label key={option.id} className={Number(selectedOptionId) === option.id ? "is-selected" : ""}>
+            <input
+              type="radio"
+              name={`proposal-${proposal.id}`}
+              value={option.id}
+              checked={Number(selectedOptionId) === option.id}
+              onChange={() => onSelect(option.id)}
+            />
+            <CalendarDays size={18} aria-hidden="true" />
+            <span>{new Date(option.scheduled_at).toLocaleString("vi-VN", { dateStyle: "full", timeStyle: "short" })}</span>
+          </label>
+        ))}
+      </fieldset>
+      <button className="btn-primary btn-with-icon" type="button" disabled={!selectedOptionId || busy} onClick={onConfirm}>
+        <Check size={18} aria-hidden="true" />
+        {busy ? "Đang xác nhận..." : "Xác nhận thời gian"}
+      </button>
+    </article>
   );
 }
 

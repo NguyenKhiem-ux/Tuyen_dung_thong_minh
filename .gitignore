@@ -1,0 +1,50 @@
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+
+# Python environments and caches
+.venv*/
+venv/
+env/
+.uv-cache/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# JavaScript dependencies and generated output
+node_modules/
+dist/
+build/
+coverage/
+
+# Test and browser artifacts
+test-results/
+playwright-report/
+
+# Runtime logs and temporary files
+*.log
+*.tmp
+*.temp
+*.bak
+*.backup
+
+# Private SQLite data, backups and user uploads
+*.db
+*.db.bak*
+*.sqlite
+*.sqlite3
+*.sqlite-shm
+*.sqlite-wal
+backend/backups/
+backend/uploads/**
+!backend/uploads/.gitkeep
+
+# Operating-system artifacts
+.DS_Store
+Thumbs.db

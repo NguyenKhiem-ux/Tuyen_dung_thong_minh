@@ -7,9 +7,11 @@
     "dev": "vite",
     "build": "vite build",
     "test:e2e": "playwright test",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:unit": "node home-data.test.mjs && node cv-builder.test.mjs"
   },
   "dependencies": {
+    "@react-pdf/renderer": "^4.9.0",
     "lucide-react": "^1.48.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"

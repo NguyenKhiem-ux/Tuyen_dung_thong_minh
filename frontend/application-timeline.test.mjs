@@ -63,8 +63,20 @@ try {
   assert.deepEqual(refreshedRender, firstRender);
   assert.equal(firstRender.stages[0].date, date(appliedAt));
   assert.equal(firstRender.stages[2].date, "Chưa có thông tin");
+
+  const messageTimeline = buildApplicationTimeline(
+    { id: 10, status: "screening", created_at: appliedAt },
+    [
+      { id: 3, application_id: 10, old_status: "screening", new_status: "screening", changed_at: interviewAt, candidate_message: "Tin nhắn độc lập", reason: "Không công khai" },
+      { id: 2, application_id: 10, old_status: "applied", new_status: "screening", changed_at: screeningAt, candidate_message: "Tin nhắn chuyển trạng thái", changed_by_name: "Recruiter A" },
+      { id: 1, application_id: 99, old_status: "applied", new_status: "screening", changed_at: appliedAt, candidate_message: "Sai application" },
+      { id: 4, application_id: 10, old_status: "screening", new_status: "screening", changed_at: resultAt, candidate_message: "   " },
+    ]
+  );
+  assert.deepEqual(messageTimeline.messages.map((item) => item.message), ["Tin nhắn chuyển trạng thái", "Tin nhắn độc lập"]);
+  assert.deepEqual(messageTimeline.messages.map((item) => item.event), ["Cập nhật trạng thái", "Lời nhắn ở trạng thái hiện tại"]);
 } finally {
   await server.close();
 }
 
-console.log("application timeline: 8 assertions groups passed");
+console.log("application timeline: 10 assertion groups passed");

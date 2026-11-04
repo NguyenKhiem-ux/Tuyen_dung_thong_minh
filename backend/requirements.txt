@@ -1,6 +1,7 @@
 fastapi==0.115.6
 uvicorn[standard]==0.34.0
 sqlalchemy==2.0.36
+alembic==1.14.0
 pydantic==2.10.4
 pydantic-settings==2.7.1
 python-jose[cryptography]==3.3.0
@@ -12,3 +13,6 @@ python-docx==1.1.2
 scikit-learn==1.6.0
 sentence-transformers==3.3.1
 email-validator==2.2.0
+# OCR cho CV dạng ảnh/scan (tùy chọn; cần cài chương trình Tesseract trên hệ điều hành)
+pytesseract==0.3.13
+Pillow>=10.0

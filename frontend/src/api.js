@@ -22,7 +22,7 @@ export function getStoredUser() {
   }
 }
 
-async function request(path, { method = "GET", body, isForm = false, auth = true } = {}) {
+async function request(path, { method = "GET", body, isForm = false, auth = true, timeoutMs = 0 } = {}) {
   const headers = {};
   if (!isForm) headers["Content-Type"] = "application/json";
   if (auth) {
@@ -30,11 +30,22 @@ async function request(path, { method = "GET", body, isForm = false, auth = true
     if (token) headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const res = await fetch(`${API_URL}${path}`, {
-    method,
-    headers,
-    body: isForm ? body : body ? JSON.stringify(body) : undefined,
-  });
+  const controller = timeoutMs ? new AbortController() : null;
+  const timeout = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+  let res;
+  try {
+    res = await fetch(`${API_URL}${path}`, {
+      method,
+      headers,
+      body: isForm ? body : body ? JSON.stringify(body) : undefined,
+      signal: controller?.signal,
+    });
+  } catch (error) {
+    if (error?.name === "AbortError") throw new Error("Phân tích AI quá thời gian chờ. Vui lòng thử lại.");
+    throw error;
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
 
   let data = null;
   const text = await res.text();
@@ -51,6 +62,26 @@ async function request(path, { method = "GET", body, isForm = false, auth = true
     throw error;
   }
   return data;
+}
+
+async function requestBlob(path) {
+  const headers = {};
+  const token = getToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(`${API_URL}${path}`, { headers, cache: "no-store" });
+  if (!res.ok) {
+    let message = `Request failed (${res.status})`;
+    try {
+      const data = await res.json();
+      message = data.detail || data.message || message;
+    } catch {
+      // Keep the status-based message for non-JSON errors.
+    }
+    const error = new Error(typeof message === "string" ? message : JSON.stringify(message));
+    error.status = res.status;
+    throw error;
+  }
+  return res.blob();
 }
 
 export const api = {
@@ -82,23 +113,57 @@ export const api = {
     return request("/api/resumes/upload", { method: "POST", body: form, isForm: true });
   },
   myResumes: () => request("/api/resumes/me"),
+  activateResume: (id) => request(`/api/resumes/${id}/activate`, { method: "PUT" }),
+  resumeInsights: () => request("/api/resumes/me/insights"),
+  listResumeDrafts: () => request("/api/resume-drafts"),
+  createResumeDraft: (payload) => request("/api/resume-drafts", { method: "POST", body: payload }),
+  getResumeDraft: (id) => request(`/api/resume-drafts/${id}`),
+  updateResumeDraft: (id, payload) => request(`/api/resume-drafts/${id}`, { method: "PUT", body: payload }),
+  deleteResumeDraft: (id) => request(`/api/resume-drafts/${id}`, { method: "DELETE" }),
+  getDraftPortrait: (id, version = "") => requestBlob(`/api/resume-drafts/${id}/portrait${version ? `?v=${version}` : ""}`),
+  uploadDraftPortrait: (id, file) => {
+    const form = new FormData();
+    form.append("file", file, "portrait.jpg");
+    return request(`/api/resume-drafts/${id}/portrait`, { method: "POST", body: form, isForm: true });
+  },
+  deleteDraftPortrait: (id) => request(`/api/resume-drafts/${id}/portrait`, { method: "DELETE" }),
+  saveDraftToResumes: (id, file, filename) => {
+    const form = new FormData();
+    form.append("file", file, filename);
+    return request(`/api/resume-drafts/${id}/save-to-resumes`, { method: "POST", body: form, isForm: true });
+  },
 
   // applications
-  applyToJob: (jobId) => request(`/api/jobs/${jobId}/apply`, { method: "POST" }),
+  applyToJob: (jobId, resumeId) =>
+    request(`/api/jobs/${jobId}/apply${resumeId ? `?resume_id=${resumeId}` : ""}`, { method: "POST" }),
   myApplications: () => request("/api/applications/me"),
   jobApplications: (jobId) => request(`/api/jobs/${jobId}/applications`),
-  updateApplicationStatus: (id, status, reason = "") =>
-    request(`/api/applications/${id}/status`, { method: "PATCH", body: { status, reason } }),
+  updateApplicationStatus: (id, status, reason = "", candidateMessage = "") =>
+    request(`/api/applications/${id}/status`, {
+      method: "PATCH",
+      body: { status, reason, candidate_message: candidateMessage },
+    }),
+  sendApplicationMessage: (id, candidateMessage) =>
+    request(`/api/applications/${id}/messages`, { method: "POST", body: { candidate_message: candidateMessage } }),
   applicationStatusHistory: (id) => request(`/api/applications/${id}/history`),
 
   // recommendations
-  recommendations: (limit = 5) => request(`/api/recommendations?limit=${limit}`),
+  recommendationPositions: () => request("/api/recommendations/positions"),
+  recommendationJobs: (position) =>
+    request(`/api/recommendations/jobs?${new URLSearchParams({ position })}`),
+  recommendations: (payload) =>
+    request("/api/recommendations", { method: "POST", body: payload, timeoutMs: 30000 }),
 
   // interviews
   scheduleInterview: (payload) => request("/api/interviews", { method: "POST", body: payload }),
   myInterviews: () => request("/api/interviews/me"),
   updateInterviewStatus: (id, status) =>
     request(`/api/interviews/${id}/status`, { method: "PATCH", body: { status } }),
+  createInterviewProposal: (payload) => request("/api/interview-proposals", { method: "POST", body: payload }),
+  myInterviewProposals: () => request("/api/interview-proposals/me"),
+  recruiterInterviewProposals: () => request("/api/recruiter/interview-proposals"),
+  confirmInterviewProposal: (id, optionId) =>
+    request(`/api/interview-proposals/${id}/confirm`, { method: "POST", body: { option_id: optionId } }),
 
   // notifications
   notifications: () => request("/api/notifications"),
@@ -108,6 +173,9 @@ export const api = {
 
   // evaluations
   createEvaluation: (payload) => request("/api/evaluations", { method: "POST", body: payload }),
+  getAIFeedback: (applicationId) => request(`/api/applications/${applicationId}/ai-feedback`),
+  saveAIFeedback: (applicationId, payload) =>
+    request(`/api/applications/${applicationId}/ai-feedback`, { method: "PUT", body: payload }),
   listEvaluations: (applicationId) => request(`/api/applications/${applicationId}/evaluations`),
 
   // stats

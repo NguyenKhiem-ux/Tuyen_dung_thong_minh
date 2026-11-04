@@ -1,0 +1,17 @@
+Benchmark engine AI: v1 (legacy) và v2
+============================================================
+Kỹ năng (23 ca, chỉ tính từ điển chung)
+  v1: precision=0.885 recall=0.939 F1=0.911 (nhận nhầm=6, bỏ sót=3)
+  v2: precision=1.000 recall=1.000 F1=1.000 (nhận nhầm=0, bỏ sót=0)
+Kinh nghiệm (16 ca, sai số <= 0.3 năm)
+  v1: 0.438
+  v2: 1.000
+Xếp hạng mẫu (3 CV x 4 tin trong seed_demo)
+  v1: top-1 đúng 3/3
+      Backend: Backend Developer 68.4 | Data Analyst 41.9
+      Frontend: Frontend Developer 69.2 | Backend Developer 32.9
+      Data & ML: Machine Learning Engineer 53.9 | Data Analyst 50.0
+  v2: top-1 đúng 3/3
+      Backend: Backend Developer 90.9 | Data Analyst 48.2
+      Frontend: Frontend Developer 88.6 | Backend Developer 36.7
+      Data & ML: Machine Learning Engineer 70.2 | Data Analyst 57.4

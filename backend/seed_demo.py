@@ -3,19 +3,20 @@ Seed the database with demo data: admin, recruiters, candidates, companies,
 jobs, resumes, applications (AI-scored), interviews and evaluations.
 
 Usage:
+    # Only after selecting a disposable, migrated database:
+    $env:ALLOW_DEMO_SEED = "true"
     cd backend
     python seed_demo.py
 """
 from datetime import datetime, timedelta
 
-from app.database import Base, engine, SessionLocal
+from app.database import SessionLocal
 from app import models
 from app.security import hash_password
 from app.ai_service import match_candidate
 from app.config import settings
 
-Base.metadata.create_all(bind=engine)
-db = SessionLocal()
+db = None
 
 
 def get_or_create_user(email, full_name, role, password="Password123"):
@@ -30,6 +31,12 @@ def get_or_create_user(email, full_name, role, password="Password123"):
 
 
 def main():
+    global db
+    if not settings.ALLOW_DEMO_SEED:
+        raise RuntimeError(
+            "Demo seed is disabled. Use only a disposable database and set ALLOW_DEMO_SEED=true explicitly."
+        )
+    db = SessionLocal()
     print("Seeding demo data...")
 
     admin = get_or_create_user(settings.ADMIN_EMAIL, "System Admin", "admin", settings.ADMIN_PASSWORD)
@@ -215,5 +222,8 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
-    db.close()
+    try:
+        main()
+    finally:
+        if db is not None:
+            db.close()

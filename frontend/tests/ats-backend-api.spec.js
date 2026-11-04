@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import { expect, test } from "@playwright/test";
 
 const apiURL = process.env.TEST_API_URL || "http://127.0.0.1:8000";
-const dbPath = fileURLToPath(new URL("../../backend/smart_recruitment.db", import.meta.url));
+const dbPath = process.env.TEST_DB_PATH || fileURLToPath(new URL("../../backend/smart_recruitment.db", import.meta.url));
 
 function runPython(script, ...args) {
   return execFileSync("python", ["-c", script, dbPath, ...args], { encoding: "utf8" }).trim();
@@ -35,6 +35,8 @@ for job_id, status in [(job1, "screening"), (job2, "applied"), (job2, "applied")
         (candidate_id, job_id, resume_id, status, marker, now, now),
     )
     ids.append(cursor.lastrowid)
+    con.execute("delete from application_status_history where application_id=?", (cursor.lastrowid,))
+    con.execute("delete from notifications where application_id=?", (cursor.lastrowid,))
 con.commit()
 print(json.dumps(ids))
 `));
@@ -48,6 +50,7 @@ con = sqlite3.connect(db)
 if ids:
     placeholders = ",".join("?" for _ in ids)
     con.execute(f"delete from application_status_history where application_id in ({placeholders})", ids)
+    con.execute(f"delete from notifications where application_id in ({placeholders})", ids)
     con.execute(f"delete from applications where id in ({placeholders})", ids)
 con.commit()
 `, ids.join(","));
@@ -69,18 +72,39 @@ test("real ATS API enforces transitions, ownership, roles and history", async ({
   const recruiter1 = await login(request, "recruiter1@demo.ai");
   const recruiter2 = await login(request, "recruiter2@demo.ai");
   const candidate = await login(request, "candidate1@demo.ai");
+  const otherCandidate = await login(request, "candidate2@demo.ai");
   const [screening, pipeline, invalid, terminal] = createTestApplications();
-  const patch = (token, applicationId, status, reason = "") => request.patch(
+  const patch = (token, applicationId, status, reason = "", candidateMessage = "") => request.patch(
     `${apiURL}/api/applications/${applicationId}/status`,
-    { headers: auth(token), data: { status, reason } },
+    { headers: auth(token), data: { status, reason, candidate_message: candidateMessage } },
   );
 
   try {
+    const publicMessages = {
+      screening: "Hồ sơ đã qua vòng sàng lọc.",
+      interview: "Mời bạn tham gia vòng phỏng vấn.",
+      offer: "Chúng tôi đã gửi offer.",
+      hired: "Chào mừng bạn gia nhập công ty.",
+    };
     for (const status of ["screening", "interview", "offer", "hired"]) {
-      const response = await patch(recruiter2, pipeline, status);
+      const reason = status === "screening" ? "Internal priority score" : "";
+      const response = await patch(recruiter2, pipeline, status, reason, publicMessages[status]);
       expect(response.status()).toBe(200);
       expect((await response.json()).status).toBe(status);
     }
+
+    const standaloneMessage = await request.post(`${apiURL}/api/applications/${pipeline}/messages`, {
+      headers: auth(recruiter2),
+      data: { candidate_message: "Chúng tôi sẽ liên hệ để hướng dẫn nhận việc." },
+    });
+    expect(standaloneMessage.status()).toBe(200);
+    expect((await standaloneMessage.json()).old_status).toBe("hired");
+    expect((await request.post(`${apiURL}/api/applications/${pipeline}/messages`, {
+      headers: auth(recruiter1), data: { candidate_message: "Not allowed" },
+    })).status()).toBe(404);
+    expect((await request.post(`${apiURL}/api/applications/${pipeline}/messages`, {
+      headers: auth(candidate), data: { candidate_message: "Not allowed" },
+    })).status()).toBe(403);
 
     const rejected = await patch(recruiter1, screening, "rejected", "Không đáp ứng yêu cầu kỹ thuật");
     expect(rejected.status()).toBe(200);
@@ -93,14 +117,19 @@ test("real ATS API enforces transitions, ownership, roles and history", async ({
     const pipelineHistoryResponse = await request.get(`${apiURL}/api/applications/${pipeline}/history`, { headers: auth(recruiter2) });
     expect(pipelineHistoryResponse.status()).toBe(200);
     const pipelineHistory = await pipelineHistoryResponse.json();
-    expect(pipelineHistory).toHaveLength(4);
-    expect(pipelineHistory.map((item) => [item.old_status, item.new_status])).toEqual([
+    expect(pipelineHistory).toHaveLength(5);
+    expect(pipelineHistory.slice(0, 4).map((item) => [item.old_status, item.new_status])).toEqual([
       ["applied", "screening"],
       ["screening", "interview"],
       ["interview", "offer"],
       ["offer", "hired"],
     ]);
     expect(pipelineHistory.every((item) => item.changed_by_name)).toBeTruthy();
+    expect(pipelineHistory[0].reason).toBe("Internal priority score");
+    expect(pipelineHistory.map((item) => item.candidate_message)).toEqual([
+      ...Object.values(publicMessages),
+      "Chúng tôi sẽ liên hệ để hướng dẫn nhận việc.",
+    ]);
 
     const screeningHistory = await (await request.get(
       `${apiURL}/api/applications/${screening}/history`,
@@ -119,7 +148,24 @@ test("real ATS API enforces transitions, ownership, roles and history", async ({
     expect(terminalHistory).toHaveLength(1);
     expect(invalidHistory).toHaveLength(0);
     expect((await request.get(`${apiURL}/api/applications/${pipeline}/history`, { headers: auth(recruiter1) })).status()).toBe(404);
-    expect((await request.get(`${apiURL}/api/applications/${pipeline}/history`, { headers: auth(candidate) })).status()).toBe(403);
+    const candidateHistoryResponse = await request.get(
+      `${apiURL}/api/applications/${pipeline}/history`,
+      { headers: auth(candidate) },
+    );
+    expect(candidateHistoryResponse.status()).toBe(200);
+    const candidateHistory = await candidateHistoryResponse.json();
+    expect(candidateHistory[0].reason).toBeNull();
+    expect(candidateHistory.map((item) => item.candidate_message)).toEqual([
+      ...Object.values(publicMessages),
+      "Chúng tôi sẽ liên hệ để hướng dẫn nhận việc.",
+    ]);
+    const applicationNotifications = (await (await request.get(
+      `${apiURL}/api/notifications`,
+      { headers: auth(candidate) },
+    )).json()).filter((item) => item.application_id === pipeline);
+    expect(applicationNotifications.filter((item) => item.type === "application_status_changed")).toHaveLength(4);
+    expect(applicationNotifications.filter((item) => item.type === "application_message_received")).toHaveLength(1);
+    expect((await request.get(`${apiURL}/api/applications/${pipeline}/history`, { headers: auth(otherCandidate) })).status()).toBe(404);
   } finally {
     cleanupTestApplications([screening, pipeline, invalid, terminal]);
   }

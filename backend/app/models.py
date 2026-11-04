@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import String, Text, Integer, Float, Boolean, ForeignKey, DateTime
+from sqlalchemy import String, Text, Integer, Float, Boolean, ForeignKey, DateTime, Index, JSON, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .database import Base
 
@@ -13,6 +13,7 @@ class User(Base):
     full_name: Mapped[str] = mapped_column(String(255))
     phone: Mapped[str] = mapped_column(String(50), default="")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    active_resume_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     jobs = relationship("Job", back_populates="recruiter")
@@ -20,6 +21,7 @@ class User(Base):
     applications = relationship("Application", back_populates="candidate")
     companies = relationship("Company", back_populates="recruiter")
     notifications = relationship("Notification", back_populates="user", cascade="all, delete-orphan")
+    cv_drafts = relationship("CVDraft", back_populates="candidate", cascade="all, delete-orphan")
 
 
 class Company(Base):
@@ -73,6 +75,45 @@ class Resume(Base):
     candidate = relationship("User", back_populates="resumes")
 
 
+class CVDraft(Base):
+    __tablename__ = "cv_drafts"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    candidate_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    title: Mapped[str] = mapped_column(String(160), default="CV chưa đặt tên")
+    template_key: Mapped[str] = mapped_column(String(30), default="olive_sidebar")
+    content: Mapped[dict] = mapped_column(JSON)
+    portrait_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    portrait_mime: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    portrait_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    candidate = relationship("User", back_populates="cv_drafts")
+    exports = relationship(
+        "CVDraftExport",
+        back_populates="draft",
+        cascade="all, delete-orphan",
+        order_by="CVDraftExport.created_at.desc()",
+    )
+
+
+class CVDraftExport(Base):
+    __tablename__ = "cv_draft_exports"
+    __table_args__ = (
+        UniqueConstraint("draft_id", "content_hash", name="uq_cv_draft_export_content"),
+        UniqueConstraint("resume_id", name="uq_cv_draft_export_resume"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    draft_id: Mapped[int] = mapped_column(ForeignKey("cv_drafts.id"), index=True)
+    resume_id: Mapped[int] = mapped_column(ForeignKey("resumes.id"))
+    content_hash: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    draft = relationship("CVDraft", back_populates="exports")
+    resume = relationship("Resume")
+
+
 class Application(Base):
     __tablename__ = "applications"
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -102,6 +143,11 @@ class Application(Base):
         cascade="all, delete-orphan",
         order_by="ApplicationStatusHistory.changed_at",
     )
+    interview_proposals = relationship(
+        "InterviewProposal",
+        back_populates="application",
+        cascade="all, delete-orphan",
+    )
 
 
 class ApplicationStatusHistory(Base):
@@ -112,6 +158,7 @@ class ApplicationStatusHistory(Base):
     new_status: Mapped[str] = mapped_column(String(30))
     changed_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    candidate_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     changed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     application = relationship("Application", back_populates="status_history")
@@ -134,10 +181,56 @@ class Interview(Base):
     application = relationship("Application", back_populates="interviews")
 
 
+class InterviewProposal(Base):
+    __tablename__ = "interview_proposals"
+    __table_args__ = (
+        Index(
+            "uq_interview_proposals_pending_application",
+            "application_id",
+            unique=True,
+            sqlite_where=text("status = 'pending'"),
+            postgresql_where=text("status = 'pending'"),
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    application_id: Mapped[int] = mapped_column(ForeignKey("applications.id"), index=True)
+    recruiter_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    status: Mapped[str] = mapped_column(String(30), default="pending")
+    selected_option_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    duration_minutes: Mapped[int] = mapped_column(Integer, default=45)
+    mode: Mapped[str] = mapped_column(String(30), default="online")
+    location: Mapped[str] = mapped_column(String(255), default="")
+    notes: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    application = relationship("Application", back_populates="interview_proposals")
+    recruiter = relationship("User")
+    options = relationship(
+        "InterviewTimeOption",
+        back_populates="proposal",
+        cascade="all, delete-orphan",
+        order_by="InterviewTimeOption.scheduled_at",
+    )
+
+
+class InterviewTimeOption(Base):
+    __tablename__ = "interview_time_options"
+    __table_args__ = (UniqueConstraint("proposal_id", "scheduled_at", name="uq_interview_proposal_time"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    proposal_id: Mapped[int] = mapped_column(ForeignKey("interview_proposals.id"), index=True)
+    scheduled_at: Mapped[datetime] = mapped_column(DateTime)
+
+    proposal = relationship("InterviewProposal", back_populates="options")
+
+
 class Notification(Base):
     __tablename__ = "notifications"
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    application_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     type: Mapped[str] = mapped_column(String(50))
     title: Mapped[str] = mapped_column(String(255))
     message: Mapped[str] = mapped_column(Text)
@@ -159,3 +252,18 @@ class Evaluation(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     application = relationship("Application", back_populates="evaluations")
+
+
+class AIFeedback(Base):
+    """Nhà tuyển dụng đánh giá điểm AI của một đơn: hợp lý / quá cao / quá thấp.
+    Là nguồn dữ liệu để đo và hiệu chỉnh engine (xem evaluation/feedback_report.py)."""
+    __tablename__ = "ai_feedback"
+    __table_args__ = (UniqueConstraint("application_id", "recruiter_id", name="uq_ai_feedback_app_recruiter"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    application_id: Mapped[int] = mapped_column(ForeignKey("applications.id"))
+    recruiter_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    label: Mapped[str] = mapped_column(String(20))  # agree | too_high | too_low
+    note: Mapped[str] = mapped_column(Text, default="")
+    score_snapshot: Mapped[float] = mapped_column(Float, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
