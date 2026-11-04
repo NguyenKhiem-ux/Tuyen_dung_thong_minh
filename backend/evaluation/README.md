@@ -56,4 +56,4 @@ Script se co gang reuse truc tiep `app.ai_service.match_candidate` de tinh `ai_s
 
 ## Cập nhật engine v2
 
-`extraction_benchmark.py` so sánh engine v1 (`legacy_ai_service.py`) với v2 trên các ca gán tay; kết quả ở `results/extraction_benchmark.txt`. Xem `AI_UPGRADE.md` ở thư mục gốc.
+`extraction_benchmark.py` so sánh engine v1 (`legacy_ai_service.py`) với v2 trên các ca gán tay; kết quả ở `results/extraction_benchmark.txt`.

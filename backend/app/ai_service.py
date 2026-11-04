@@ -1,6 +1,6 @@
 """Engine phân tích CV và chấm điểm mức độ phù hợp (v2).
 
-Nâng cấp so với v1 (xem AI_UPGRADE.md):
+Nâng cấp so với v1:
   * Kỹ năng: khớp theo ranh giới từ + bí danh + quan hệ ngầm định (app/skills.py).
   * Kỹ năng yêu cầu ngoài danh mục vẫn được tìm trực tiếp trong CV.
   * Kinh nghiệm: đọc theo ngữ cảnh và theo khoảng thời gian làm việc.
