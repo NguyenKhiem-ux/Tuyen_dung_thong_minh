@@ -1,5 +1,8 @@
-from pydantic import BaseModel, EmailStr, ConfigDict, Field
-from typing import Literal, Optional
+import json
+import re
+from typing import Annotated, Literal, Optional
+
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, StringConstraints, model_validator
 from datetime import datetime
 
 
@@ -98,6 +101,116 @@ class ResumeOut(BaseModel):
     projects: list[str] = []
     summary: str
     created_at: datetime
+    is_active: bool = False
+
+
+CVShortText = Annotated[str, StringConstraints(max_length=200)]
+CVLongText = Annotated[str, StringConstraints(max_length=4000)]
+CVUrl = Annotated[str, StringConstraints(max_length=500)]
+CVSkill = Annotated[str, StringConstraints(max_length=100)]
+CVGPA = Annotated[str, StringConstraints(max_length=20, pattern=r"^(?:|\d+(?:\.\d+)?/\d+(?:\.\d+)?)$")]
+_HTML_TAG = re.compile(r"<\s*/?\s*[a-zA-Z][^>]*>")
+
+
+class CVPersonal(BaseModel):
+    full_name: CVShortText = ""
+    desired_position: CVShortText = ""
+    email: EmailStr | Literal[""] = ""
+    phone: CVShortText = ""
+    address: CVShortText = ""
+    birth_date: Annotated[str, StringConstraints(max_length=30)] = ""
+    github: CVUrl = ""
+    linkedin: CVUrl = ""
+    portfolio: CVUrl = ""
+
+
+class CVEducation(BaseModel):
+    school: CVShortText = ""
+    major: CVShortText = ""
+    start_date: CVShortText = ""
+    end_date: CVShortText = ""
+    gpa: CVGPA = ""
+    # Legacy fields remain accepted and stored, but are no longer rendered.
+    period: CVShortText = ""
+    description: CVLongText = ""
+
+
+class CVExperience(BaseModel):
+    company: CVShortText = ""
+    position: CVShortText = ""
+    period: CVShortText = ""
+    description: CVLongText = ""
+
+
+class CVProject(BaseModel):
+    name: CVShortText = ""
+    technologies: CVShortText = ""
+    role: CVShortText = ""
+    description: CVLongText = ""
+
+
+class CVCertificate(BaseModel):
+    name: CVShortText = ""
+    issuer: CVShortText = ""
+    period: CVShortText = ""
+
+
+class CVAward(BaseModel):
+    name: CVShortText = ""
+    issuer: CVShortText = ""
+    period: CVShortText = ""
+    description: CVLongText = ""
+
+
+class CVContent(BaseModel):
+    personal: CVPersonal = Field(default_factory=CVPersonal)
+    objective: CVLongText = ""
+    summary: CVLongText = ""
+    education: list[CVEducation] = Field(default_factory=list, max_length=12)
+    experience: list[CVExperience] = Field(default_factory=list, max_length=20)
+    skills: list[CVSkill] = Field(default_factory=list, max_length=60)
+    hobbies: list[CVSkill] = Field(default_factory=list, max_length=20)
+    projects: list[CVProject] = Field(default_factory=list, max_length=20)
+    awards: list[CVAward] = Field(default_factory=list, max_length=20)
+    certificates: list[CVCertificate] = Field(default_factory=list, max_length=20)
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_html(cls, value):
+        def walk(item):
+            if isinstance(item, str) and _HTML_TAG.search(item):
+                raise ValueError("HTML is not allowed in CV content")
+            if isinstance(item, dict):
+                for child in item.values():
+                    walk(child)
+            elif isinstance(item, list):
+                for child in item:
+                    walk(child)
+
+        walk(value)
+        return value
+
+    @model_validator(mode="after")
+    def limit_payload_size(self):
+        if len(json.dumps(self.model_dump(mode="json"), ensure_ascii=False).encode("utf-8")) > 100_000:
+            raise ValueError("CV content is too large")
+        return self
+
+
+class CVDraftIn(BaseModel):
+    title: str = Field(default="CV chưa đặt tên", min_length=1, max_length=160)
+    template_key: Literal["olive_sidebar", "navy"] = "olive_sidebar"
+    content: CVContent
+
+
+class CVDraftOut(CVDraftIn):
+    id: int
+    candidate_id: int
+    last_export_resume_id: int | None = None
+    has_portrait: bool = False
+    portrait_version: str | None = None
+    created_at: datetime
+    updated_at: datetime
 
 
 # ---------- Application ----------
@@ -283,3 +396,22 @@ class ResumeInsightsOut(BaseModel):
     skills: list[str]
     experience_years: float
     engine_version: str
+
+
+class RecommendationRequest(BaseModel):
+    resume_id: int
+    position: str = Field(min_length=1, max_length=255)
+    mode: Literal["single", "position"]
+    job_id: Optional[int] = None
+    limit: int = Field(default=6, ge=1, le=10)
+
+    @model_validator(mode="after")
+    def validate_selection(self):
+        self.position = self.position.strip()
+        if not self.position:
+            raise ValueError("position is required")
+        if self.mode == "single" and self.job_id is None:
+            raise ValueError("job_id is required in single mode")
+        if self.mode == "position" and self.job_id is not None:
+            raise ValueError("job_id is only allowed in single mode")
+        return self

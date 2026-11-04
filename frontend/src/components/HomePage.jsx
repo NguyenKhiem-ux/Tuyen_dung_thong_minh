@@ -135,7 +135,7 @@ export default function HomePage({ user }) {
           subtitle="Cập nhật những cơ hội việc làm mới nhất từ các nhà tuyển dụng"
           tone="blue"
         />
-        <JobGrid {...state} jobs={latest.slice(0, 5)} compact count={5} />
+        <JobGrid {...state} jobs={latest.slice(0, 3)} count={3} />
       </section>
       <CompanySection {...state} />
       <EmployerBand user={user} />

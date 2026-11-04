@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import String, Text, Integer, Float, Boolean, ForeignKey, DateTime, Index, UniqueConstraint, text
+from sqlalchemy import String, Text, Integer, Float, Boolean, ForeignKey, DateTime, Index, JSON, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .database import Base
 
@@ -13,6 +13,7 @@ class User(Base):
     full_name: Mapped[str] = mapped_column(String(255))
     phone: Mapped[str] = mapped_column(String(50), default="")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    active_resume_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     jobs = relationship("Job", back_populates="recruiter")
@@ -20,6 +21,7 @@ class User(Base):
     applications = relationship("Application", back_populates="candidate")
     companies = relationship("Company", back_populates="recruiter")
     notifications = relationship("Notification", back_populates="user", cascade="all, delete-orphan")
+    cv_drafts = relationship("CVDraft", back_populates="candidate", cascade="all, delete-orphan")
 
 
 class Company(Base):
@@ -71,6 +73,45 @@ class Resume(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     candidate = relationship("User", back_populates="resumes")
+
+
+class CVDraft(Base):
+    __tablename__ = "cv_drafts"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    candidate_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    title: Mapped[str] = mapped_column(String(160), default="CV chưa đặt tên")
+    template_key: Mapped[str] = mapped_column(String(30), default="olive_sidebar")
+    content: Mapped[dict] = mapped_column(JSON)
+    portrait_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    portrait_mime: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    portrait_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    candidate = relationship("User", back_populates="cv_drafts")
+    exports = relationship(
+        "CVDraftExport",
+        back_populates="draft",
+        cascade="all, delete-orphan",
+        order_by="CVDraftExport.created_at.desc()",
+    )
+
+
+class CVDraftExport(Base):
+    __tablename__ = "cv_draft_exports"
+    __table_args__ = (
+        UniqueConstraint("draft_id", "content_hash", name="uq_cv_draft_export_content"),
+        UniqueConstraint("resume_id", name="uq_cv_draft_export_resume"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    draft_id: Mapped[int] = mapped_column(ForeignKey("cv_drafts.id"), index=True)
+    resume_id: Mapped[int] = mapped_column(ForeignKey("resumes.id"))
+    content_hash: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    draft = relationship("CVDraft", back_populates="exports")
+    resume = relationship("Resume")
 
 
 class Application(Base):
@@ -148,6 +189,7 @@ class InterviewProposal(Base):
             "application_id",
             unique=True,
             sqlite_where=text("status = 'pending'"),
+            postgresql_where=text("status = 'pending'"),
         ),
     )
 

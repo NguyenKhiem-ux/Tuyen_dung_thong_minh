@@ -74,6 +74,7 @@ test("recruiter messages persist in the candidate application timeline", async (
     if (path === `/api/jobs/${job.id}`) return route.fulfill({ json: job });
     if (path === "/api/applications/me") return route.fulfill({ json: [application] });
     if (path === "/api/interviews/me") return route.fulfill({ json: [] });
+    if (path === `/api/applications/${application.id}/ai-feedback`) return route.fulfill({ json: null });
     if (path === `/api/applications/${application.id}/history`) {
       const body = candidateRequest ? history.map((item) => ({ ...item, reason: null })) : history;
       return route.fulfill({ json: body });
@@ -116,7 +117,7 @@ test("recruiter messages persist in the candidate application timeline", async (
   await page.locator(".recruiter-nav").getByRole("link", { name: "Ứng viên & ATS", exact: true }).click();
   await page.getByRole("button", { name: "Xem chi tiết" }).click();
   await page.getByRole("button", { name: "Gửi lời nhắn" }).click();
-  const messageField = page.getByLabel("Ghi chú gửi ứng viên", { exact: true });
+  const messageField = page.getByLabel("Lời nhắn cho ứng viên", { exact: true });
   await messageField.fill("Chúng tôi sẽ liên hệ để sắp xếp bước tiếp theo.");
   await messageField.locator("xpath=ancestor::form").getByRole("button", { name: "Gửi lời nhắn", exact: true }).click();
   await expect(page.getByText("Đã gửi lời nhắn cho ứng viên.")).toBeVisible();
@@ -149,4 +150,68 @@ test("recruiter messages persist in the candidate application timeline", async (
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
   await page.screenshot({ path: testInfo.outputPath("candidate-application-messages-mobile.png"), fullPage: true });
   expect(consoleErrors).toEqual([]);
+});
+
+test("candidate sees a clear empty state when no visible message was sent", async ({ page }) => {
+  const candidate = { id: 2, email: "candidate@example.com", full_name: "Candidate A", role: "candidate" };
+  const job = {
+    id: 10,
+    title: "Backend Developer",
+    company_name: "TechNova Solutions",
+    location: "Hà Nội",
+    employment_type: "Full-time",
+  };
+  const application = {
+    id: 11,
+    job_id: job.id,
+    job_title: job.title,
+    candidate_id: candidate.id,
+    candidate_name: candidate.full_name,
+    candidate_email: candidate.email,
+    status: "screening",
+    final_score: 82,
+    skill_score: 86,
+    experience_score: 78,
+    semantic_score: 84,
+    project_score: 80,
+    missing_skills: [],
+    explanation: "Hồ sơ phù hợp.",
+    created_at: "2026-10-15T03:00:00Z",
+  };
+
+  await page.addInitScript(({ user }) => {
+    localStorage.setItem("sra_token", "candidate-token");
+    localStorage.setItem("sra_user", JSON.stringify(user));
+  }, { user: candidate });
+  await page.route("**/api/**", async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === "/api/me") return route.fulfill({ json: candidate });
+    if (path === "/api/applications/me") return route.fulfill({ json: [application] });
+    if (path === `/api/jobs/${job.id}`) return route.fulfill({ json: job });
+    if (path === "/api/interviews/me") return route.fulfill({ json: [] });
+    if (path === `/api/applications/${application.id}/history`) {
+      return route.fulfill({
+        json: [{
+          id: 1,
+          application_id: application.id,
+          old_status: "applied",
+          new_status: "screening",
+          changed_by: 1,
+          changed_by_name: "Recruiter A",
+          reason: null,
+          candidate_message: null,
+          changed_at: "2026-10-16T03:00:00Z",
+        }],
+      });
+    }
+    if (path === "/api/notifications") return route.fulfill({ json: [] });
+    if (path === "/api/notifications/unread-count") return route.fulfill({ json: { count: 0 } });
+    return route.fulfill({ status: 404, json: { detail: `Unhandled ${route.request().method()} ${path}` } });
+  });
+
+  await page.goto("/candidate/applications");
+  const messages = page.getByRole("region", { name: "Lời nhắn từ nhà tuyển dụng" });
+  await expect(messages).toBeVisible();
+  await expect(messages.getByText("Chưa có lời nhắn nào từ nhà tuyển dụng.", { exact: true })).toBeVisible();
+  await expect(messages.locator(".application-message")).toHaveCount(0);
 });

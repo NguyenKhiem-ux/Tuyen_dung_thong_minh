@@ -1,30 +1,39 @@
+import hashlib
+import io
+import json
 import logging
 import os
+import re
 import uuid
+import warnings
 from datetime import datetime, timezone
+from pathlib import Path
+from time import perf_counter
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
+from fastapi.responses import FileResponse
+from PIL import Image, ImageOps, UnidentifiedImageError
 from sqlalchemy.orm import Session
 from sqlalchemy import select, func, or_, update
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from .database import get_db
 from .models import (
-    User, Job, Resume, Application, ApplicationStatusHistory,
+    User, Job, Resume, CVDraft, CVDraftExport, Application, ApplicationStatusHistory,
     Company, Interview, InterviewProposal, InterviewTimeOption, Notification, Evaluation, AIFeedback,
 )
 from .schemas import (
     RegisterIn, LoginIn, Token, UserOut,
     CompanyIn, CompanyOut,
     JobCreate, JobUpdate, JobOut,
-    ResumeOut,
+    ResumeOut, CVDraftIn, CVDraftOut,
     ApplicationOut, ApplicationStatusUpdateIn, ApplicationStatusHistoryOut, ApplicationMessageCreate,
     InterviewCreate, InterviewOut, InterviewStatusUpdateIn,
     InterviewProposalCreate, InterviewProposalConfirmIn, InterviewProposalOut,
     NotificationOut,
     EvaluationCreate, EvaluationOut,
     AdminUserUpdate,
-    AIFeedbackIn, AIFeedbackOut, ResumeInsightsOut,
+    AIFeedbackIn, AIFeedbackOut, ResumeInsightsOut, RecommendationRequest,
 )
 from .security import hash_password, verify_password, create_access_token
 from .deps import current_user, require_role
@@ -38,6 +47,12 @@ from .config import settings, MAX_UPLOAD_BYTES
 api = APIRouter(prefix="/api")
 logger = logging.getLogger(__name__)
 os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
+
+MAX_PORTRAIT_BYTES = 5 * 1024 * 1024
+MAX_PORTRAIT_PIXELS = 16_000_000
+PORTRAIT_SIZE = 800
+ALLOWED_PORTRAIT_FORMATS = {"JPEG", "PNG", "WEBP"}
+CV_EXPORT_VERSION = 2
 
 APPLICATION_TRANSITIONS = {
     "applied": {"screening", "rejected"},
@@ -225,6 +240,36 @@ def delete_job(job_id: int, db: Session = Depends(get_db), user: User = Depends(
 # =====================================================================
 # RESUMES
 # =====================================================================
+def _candidate_resume(db: Session, user: User, resume_id: int | None = None) -> Resume | None:
+    if resume_id is not None:
+        return db.scalar(select(Resume).where(Resume.id == resume_id, Resume.candidate_id == user.id))
+    if user.active_resume_id:
+        active = db.scalar(
+            select(Resume).where(Resume.id == user.active_resume_id, Resume.candidate_id == user.id)
+        )
+        if active:
+            return active
+    return db.scalar(
+        select(Resume)
+        .where(Resume.candidate_id == user.id)
+        .order_by(Resume.created_at.desc(), Resume.id.desc())
+    )
+
+
+def _resume_out(resume: Resume, active_resume_id: int | None = None) -> dict:
+    return {
+        "id": resume.id,
+        "filename": resume.filename,
+        "skills": [item for item in resume.skills.split(", ") if item],
+        "experience_years": resume.experience_years,
+        "education": [item for item in resume.education.split("\n") if item],
+        "projects": [item for item in resume.projects.split("\n") if item],
+        "summary": resume.summary,
+        "created_at": resume.created_at,
+        "is_active": resume.id == active_resume_id,
+    }
+
+
 @api.post("/resumes/upload", response_model=ResumeOut)
 def upload_resume(file: UploadFile = File(...), db: Session = Depends(get_db), user: User = Depends(require_role("candidate"))):
     ext = (file.filename or "").lower().rsplit(".", 1)[-1]
@@ -268,27 +313,351 @@ def upload_resume(file: UploadFile = File(...), db: Session = Depends(get_db), u
         education="\n".join(education), projects="\n".join(projects), summary=summary,
     )
     db.add(resume)
+    db.flush()
+    user.active_resume_id = resume.id
     db.commit()
     db.refresh(resume)
-    return {
-        "id": resume.id, "filename": resume.filename, "skills": skills, "experience_years": resume.experience_years,
-        "education": education, "projects": projects, "summary": resume.summary, "created_at": resume.created_at,
-    }
+    return _resume_out(resume, user.active_resume_id)
 
 
 @api.get("/resumes/me", response_model=list[ResumeOut])
 def my_resumes(db: Session = Depends(get_db), user: User = Depends(require_role("candidate"))):
-    rows = list(db.scalars(select(Resume).where(Resume.candidate_id == user.id).order_by(Resume.created_at.desc())))
-    return [
-        {
-            "id": r.id, "filename": r.filename, "skills": [x for x in r.skills.split(", ") if x],
-            "experience_years": r.experience_years,
-            "education": [x for x in r.education.split("\n") if x],
-            "projects": [x for x in r.projects.split("\n") if x],
-            "summary": r.summary, "created_at": r.created_at,
-        }
-        for r in rows
-    ]
+    rows = list(
+        db.scalars(
+            select(Resume)
+            .where(Resume.candidate_id == user.id)
+            .order_by(Resume.created_at.desc(), Resume.id.desc())
+        )
+    )
+    effective_active_id = user.active_resume_id or (rows[0].id if rows else None)
+    return [_resume_out(resume, effective_active_id) for resume in rows]
+
+
+@api.put("/resumes/{resume_id}/activate", response_model=ResumeOut)
+def activate_resume(
+    resume_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role("candidate")),
+):
+    resume = _candidate_resume(db, user, resume_id)
+    if not resume:
+        raise HTTPException(404, "Resume not found")
+    user.active_resume_id = resume.id
+    db.commit()
+    return _resume_out(resume, resume.id)
+
+
+def _draft_out(draft: CVDraft) -> dict:
+    return {
+        "id": draft.id,
+        "candidate_id": draft.candidate_id,
+        "title": draft.title,
+        "template_key": draft.template_key,
+        "content": draft.content,
+        "last_export_resume_id": draft.exports[0].resume_id if draft.exports else None,
+        "has_portrait": bool(draft.portrait_filename),
+        "portrait_version": draft.portrait_sha256[:12] if draft.portrait_sha256 else None,
+        "created_at": draft.created_at,
+        "updated_at": draft.updated_at,
+    }
+
+
+def _owned_draft(db: Session, draft_id: int, user: User) -> CVDraft:
+    draft = db.scalar(select(CVDraft).where(CVDraft.id == draft_id, CVDraft.candidate_id == user.id))
+    if not draft:
+        raise HTTPException(404, "CV draft not found")
+    return draft
+
+
+def _portrait_path(filename: str) -> Path:
+    return Path(settings.UPLOAD_DIR) / "cv_portraits" / Path(filename).name
+
+
+def _remove_portrait(filename: str | None) -> None:
+    if not filename:
+        return
+    try:
+        _portrait_path(filename).unlink(missing_ok=True)
+    except OSError:
+        logger.warning("Could not remove obsolete CV portrait %s", filename, exc_info=True)
+
+
+def _normalize_portrait(contents: bytes) -> bytes:
+    if len(contents) > MAX_PORTRAIT_BYTES:
+        raise HTTPException(413, "Portrait is larger than 5 MB")
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", Image.DecompressionBombWarning)
+            with Image.open(io.BytesIO(contents)) as source:
+                if source.format not in ALLOWED_PORTRAIT_FORMATS:
+                    raise HTTPException(400, "Portrait must contain a real JPG, PNG or WebP image")
+                if source.width * source.height > MAX_PORTRAIT_PIXELS:
+                    raise HTTPException(400, "Portrait pixel dimensions are too large")
+                if getattr(source, "n_frames", 1) != 1:
+                    raise HTTPException(400, "Animated portraits are not supported")
+                source.load()
+                image = ImageOps.exif_transpose(source)
+                if image.mode in ("RGBA", "LA") or (image.mode == "P" and "transparency" in image.info):
+                    rgba = image.convert("RGBA")
+                    clean = Image.new("RGB", rgba.size, "white")
+                    clean.paste(rgba, mask=rgba.getchannel("A"))
+                else:
+                    clean = image.convert("RGB")
+                side = min(clean.size)
+                left = (clean.width - side) // 2
+                top = (clean.height - side) // 2
+                clean = clean.crop((left, top, left + side, top + side)).resize(
+                    (PORTRAIT_SIZE, PORTRAIT_SIZE), Image.Resampling.LANCZOS
+                )
+                output = io.BytesIO()
+                clean.save(output, format="JPEG", quality=90, optimize=True)
+                return output.getvalue()
+    except HTTPException:
+        raise
+    except (Image.DecompressionBombError, Image.DecompressionBombWarning, UnidentifiedImageError, OSError, ValueError):
+        raise HTTPException(400, "Portrait must contain a valid JPG, PNG or WebP image")
+
+
+@api.post("/resume-drafts", response_model=CVDraftOut)
+def create_cv_draft(
+    data: CVDraftIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role("candidate")),
+):
+    draft = CVDraft(
+        candidate_id=user.id,
+        title=data.title.strip(),
+        template_key=data.template_key,
+        content=data.content.model_dump(mode="json"),
+    )
+    db.add(draft)
+    db.commit()
+    db.refresh(draft)
+    return _draft_out(draft)
+
+
+@api.get("/resume-drafts", response_model=list[CVDraftOut])
+def list_cv_drafts(db: Session = Depends(get_db), user: User = Depends(require_role("candidate"))):
+    drafts = list(
+        db.scalars(
+            select(CVDraft)
+            .where(CVDraft.candidate_id == user.id)
+            .order_by(CVDraft.updated_at.desc(), CVDraft.id.desc())
+        )
+    )
+    return [_draft_out(draft) for draft in drafts]
+
+
+@api.get("/resume-drafts/{draft_id}", response_model=CVDraftOut)
+def get_cv_draft(
+    draft_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role("candidate")),
+):
+    return _draft_out(_owned_draft(db, draft_id, user))
+
+
+@api.put("/resume-drafts/{draft_id}", response_model=CVDraftOut)
+def update_cv_draft(
+    draft_id: int,
+    data: CVDraftIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role("candidate")),
+):
+    draft = _owned_draft(db, draft_id, user)
+    draft.title = data.title.strip()
+    draft.template_key = data.template_key
+    draft.content = data.content.model_dump(mode="json")
+    draft.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(draft)
+    return _draft_out(draft)
+
+
+@api.delete("/resume-drafts/{draft_id}")
+def delete_cv_draft(
+    draft_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role("candidate")),
+):
+    draft = _owned_draft(db, draft_id, user)
+    portrait_filename = draft.portrait_filename
+    db.delete(draft)
+    db.commit()
+    _remove_portrait(portrait_filename)
+    return {"message": "CV draft deleted"}
+
+
+@api.post("/resume-drafts/{draft_id}/portrait", response_model=CVDraftOut)
+def upload_cv_draft_portrait(
+    draft_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role("candidate")),
+):
+    draft = _owned_draft(db, draft_id, user)
+    normalized = _normalize_portrait(file.file.read(MAX_PORTRAIT_BYTES + 1))
+    new_filename = f"{uuid.uuid4().hex}.jpg"
+    new_path = _portrait_path(new_filename)
+    try:
+        new_path.parent.mkdir(parents=True, exist_ok=True)
+        new_path.write_bytes(normalized)
+    except OSError:
+        _remove_portrait(new_filename)
+        logger.exception("Could not write normalized CV portrait")
+        raise HTTPException(500, "Could not store portrait")
+    old_filename = draft.portrait_filename
+    draft.portrait_filename = new_filename
+    draft.portrait_mime = "image/jpeg"
+    draft.portrait_sha256 = hashlib.sha256(normalized).hexdigest()
+    draft.updated_at = datetime.utcnow()
+    try:
+        db.commit()
+        db.refresh(draft)
+    except SQLAlchemyError:
+        db.rollback()
+        _remove_portrait(new_filename)
+        logger.exception("Could not save CV portrait metadata")
+        raise HTTPException(500, "Could not save portrait")
+    _remove_portrait(old_filename)
+    return _draft_out(draft)
+
+
+@api.get("/resume-drafts/{draft_id}/portrait")
+def get_cv_draft_portrait(
+    draft_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role("candidate")),
+):
+    draft = _owned_draft(db, draft_id, user)
+    if not draft.portrait_filename:
+        raise HTTPException(404, "CV portrait not found")
+    path = _portrait_path(draft.portrait_filename)
+    if not path.is_file():
+        raise HTTPException(404, "CV portrait file not found")
+    return FileResponse(
+        path,
+        media_type=draft.portrait_mime or "image/jpeg",
+        filename="portrait.jpg",
+        content_disposition_type="inline",
+        headers={"Cache-Control": "private, no-store"},
+    )
+
+
+@api.delete("/resume-drafts/{draft_id}/portrait", response_model=CVDraftOut)
+def delete_cv_draft_portrait(
+    draft_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role("candidate")),
+):
+    draft = _owned_draft(db, draft_id, user)
+    old_filename = draft.portrait_filename
+    draft.portrait_filename = None
+    draft.portrait_mime = None
+    draft.portrait_sha256 = None
+    draft.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(draft)
+    _remove_portrait(old_filename)
+    return _draft_out(draft)
+
+
+@api.post("/resume-drafts/{draft_id}/save-to-resumes", response_model=ResumeOut)
+def save_cv_draft_to_resumes(
+    draft_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role("candidate")),
+):
+    draft = _owned_draft(db, draft_id, user)
+    content_hash = hashlib.sha256(
+        json.dumps(
+            {
+                "export_version": CV_EXPORT_VERSION,
+                "title": draft.title,
+                "template_key": draft.template_key,
+                "content": draft.content,
+                "portrait_sha256": draft.portrait_sha256 or "",
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+    existing_export = db.scalar(
+        select(CVDraftExport).where(
+            CVDraftExport.draft_id == draft.id,
+            CVDraftExport.content_hash == content_hash,
+        )
+    )
+    if existing_export:
+        existing_resume = _candidate_resume(db, user, existing_export.resume_id)
+        if existing_resume:
+            user.active_resume_id = existing_resume.id
+            db.commit()
+            return _resume_out(existing_resume, existing_resume.id)
+
+    contents = file.file.read()
+    if len(contents) > MAX_UPLOAD_BYTES:
+        raise HTTPException(413, f"File too large. Maximum size is {settings.MAX_UPLOAD_MB} MB")
+    if not contents.startswith(b"%PDF-"):
+        raise HTTPException(400, "CV Builder export must be a valid PDF")
+
+    stored_name = f"{uuid.uuid4().hex}.pdf"
+    path = os.path.join(settings.UPLOAD_DIR, stored_name)
+    with open(path, "wb") as output:
+        output.write(contents)
+    try:
+        raw_text = extract_text_from_file(path, file.filename or stored_name)
+    except Exception as exc:
+        os.remove(path)
+        raise HTTPException(400, f"Could not read generated PDF: {exc}")
+    if len(raw_text.strip()) < 20:
+        os.remove(path)
+        raise HTTPException(400, "Generated PDF does not contain enough extractable text")
+
+    skills = extract_skills(raw_text)
+    experience = extract_experience(raw_text)
+    education = extract_education(raw_text)
+    projects = extract_projects(raw_text)
+    display_title = re.sub(r'[\\/:*?"<>|\x00-\x1f]', "_", draft.title).strip(" .") or "CV trực tuyến"
+    resume = Resume(
+        candidate_id=user.id,
+        filename=f"{display_title[:150]}.pdf",
+        raw_text=raw_text,
+        skills=", ".join(skills),
+        experience_years=experience,
+        education="\n".join(education),
+        projects="\n".join(projects),
+        summary=f"CV tạo trực tuyến: {len(skills)} kỹ năng, {experience:g} năm kinh nghiệm.",
+    )
+    db.add(resume)
+    try:
+        db.flush()
+        db.add(CVDraftExport(draft_id=draft.id, resume_id=resume.id, content_hash=content_hash))
+        user.active_resume_id = resume.id
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        os.remove(path)
+        existing_export = db.scalar(
+            select(CVDraftExport).where(
+                CVDraftExport.draft_id == draft.id,
+                CVDraftExport.content_hash == content_hash,
+            )
+        )
+        if existing_export and (existing_resume := _candidate_resume(db, user, existing_export.resume_id)):
+            user.active_resume_id = existing_resume.id
+            db.commit()
+            return _resume_out(existing_resume, existing_resume.id)
+        raise HTTPException(409, "This CV version was already saved")
+    except SQLAlchemyError:
+        db.rollback()
+        os.remove(path)
+        logger.exception("Could not save CV Builder PDF")
+        raise HTTPException(500, "Could not save generated CV")
+    db.refresh(resume)
+    return _resume_out(resume, resume.id)
 
 
 # =====================================================================
@@ -360,14 +729,21 @@ def _history_out(item: ApplicationStatusHistory, include_internal: bool = True) 
 
 
 @api.post("/jobs/{job_id}/apply")
-def apply(job_id: int, db: Session = Depends(get_db), user: User = Depends(require_role("candidate"))):
+def apply(
+    job_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role("candidate")),
+    resume_id: int | None = None,
+):
     job = db.get(Job, job_id)
     if not job:
         raise HTTPException(404, "Job not found")
     if job.status != "open":
         raise HTTPException(400, "This job is no longer accepting applications")
-    resume = db.scalar(select(Resume).where(Resume.candidate_id == user.id).order_by(Resume.created_at.desc()))
+    resume = _candidate_resume(db, user, resume_id)
     if not resume:
+        if resume_id is not None:
+            raise HTTPException(404, "Resume not found")
         raise HTTPException(400, "Please upload a CV before applying")
     if db.scalar(select(Application).where(Application.job_id == job_id, Application.candidate_id == user.id)):
         raise HTTPException(409, "You have already applied to this job")
@@ -514,22 +890,78 @@ def application_status_history(application_id: int, db: Session = Depends(get_db
 # =====================================================================
 # AI JOB RECOMMENDATIONS
 # =====================================================================
+def _recommendable_jobs(user_id: int, position: str):
+    return select(Job).where(
+        Job.status == "open",
+        func.lower(func.trim(Job.title)) == position.strip().lower(),
+        ~Job.applications.any(Application.candidate_id == user_id),
+    )
+
+
+@api.get("/recommendations/positions")
+def recommendation_positions(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role("candidate")),
+):
+    normalized_title = func.lower(func.trim(Job.title))
+    positions = db.scalars(
+        select(func.min(Job.title))
+        .where(Job.status == "open", ~Job.applications.any(Application.candidate_id == user.id))
+        .group_by(normalized_title)
+        .order_by(normalized_title)
+    )
+    return {"positions": [title for title in positions if title and title.strip()]}
+
+
+@api.get("/recommendations/jobs", response_model=list[JobOut])
+def recommendation_jobs(
+    position: str = Query(min_length=1, max_length=255),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role("candidate")),
+):
+    jobs = list(db.scalars(_recommendable_jobs(user.id, position).order_by(Job.created_at.desc(), Job.id.desc())))
+    return [_job_out(job, db) for job in jobs]
+
+
 @api.get("/recommendations")
-def recommend_jobs(limit: int = 5, db: Session = Depends(get_db), user: User = Depends(require_role("candidate"))):
-    resume = db.scalar(select(Resume).where(Resume.candidate_id == user.id).order_by(Resume.created_at.desc()))
+def recommendation_selection_required(user: User = Depends(require_role("candidate"))):
+    raise HTTPException(400, "Choose a CV and position, then start the AI analysis")
+
+
+@api.post("/recommendations")
+def recommend_jobs(
+    data: RecommendationRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role("candidate")),
+):
+    started = perf_counter()
+    resume = _candidate_resume(db, user, data.resume_id)
     if not resume:
-        raise HTTPException(400, "Upload a CV first to get AI job recommendations")
+        raise HTTPException(404, "Resume not found")
+
+    stmt = _recommendable_jobs(user.id, data.position)
+    if data.mode == "single":
+        stmt = stmt.where(Job.id == data.job_id)
+        candidate_limit = 1
+    else:
+        candidate_limit = settings.AI_RECOMMENDATION_CANDIDATE_LIMIT
+    jobs = list(db.scalars(stmt.order_by(Job.created_at.desc(), Job.id.desc()).limit(candidate_limit)))
+    if data.mode == "single" and not jobs:
+        raise HTTPException(404, "Open job not found for the selected position")
+
     skills = [x for x in resume.skills.split(", ") if x]
-    open_jobs = list(db.scalars(select(Job).where(Job.status == "open")))
-    scoring_context = ScoringContext.from_jobs(open_jobs)  # cùng ngữ cảnh IDF với lúc ứng tuyển
-    already_applied = {a.job_id for a in db.scalars(select(Application).where(Application.candidate_id == user.id))}
-    open_jobs = [j for j in open_jobs if j.id not in already_applied]
+    scoring_context = ScoringContext.from_jobs(jobs)
     ranked = recommend_jobs_for_resume(
-        resume.raw_text, skills, resume.experience_years, open_jobs, context=scoring_context,
-        redact_terms=[user.full_name],
+        resume.raw_text,
+        skills,
+        resume.experience_years,
+        jobs,
+        context=scoring_context,
+        redact_terms=[user.full_name] if user.full_name else [],
+        evidence_top=data.limit,
     )
     results = []
-    for item in ranked[:limit]:
+    for item in ranked[:data.limit]:
         job = item["job"]
         m = item["match"]
         results.append({
@@ -545,8 +977,15 @@ def recommend_jobs(limit: int = 5, db: Session = Depends(get_db), user: User = D
             "preferred_skills": m["preferred_skills"],
             "evidence": m.get("evidence", {}),
             "explanation": m["explanation"],
+            "engine_version": m["engine_version"],
         })
-    return results
+    return {
+        "items": results,
+        "resume_insights": resume_tips(resume.raw_text),
+        "analyzed_count": len(jobs),
+        "candidate_limit": candidate_limit,
+        "duration_ms": round((perf_counter() - started) * 1000, 2),
+    }
 
 
 # =====================================================================
@@ -554,7 +993,7 @@ def recommend_jobs(limit: int = 5, db: Session = Depends(get_db), user: User = D
 # =====================================================================
 @api.get("/resumes/me/insights", response_model=ResumeInsightsOut)
 def resume_insights(db: Session = Depends(get_db), user: User = Depends(require_role("candidate"))):
-    resume = db.scalars(select(Resume).where(Resume.candidate_id == user.id).order_by(Resume.created_at.desc())).first()
+    resume = _candidate_resume(db, user)
     if not resume:
         raise HTTPException(404, "Upload a CV first")
     return resume_tips(resume.raw_text)

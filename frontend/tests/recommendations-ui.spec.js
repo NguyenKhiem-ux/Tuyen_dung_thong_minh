@@ -11,11 +11,12 @@ const recommendations = [
   {
     job: {
       id: 101,
-      title: "Backend Developer",
+      title: "DevOps Engineer",
       company_name: "DataBridge Analytics",
       location: "Hà Nội",
       employment_type: "Full-time",
       description: "Phát triển API và dịch vụ dữ liệu cho nền tảng tuyển dụng thông minh.",
+      status: "open",
     },
     final_score: 34.47,
     skill_score: 51.25,
@@ -33,6 +34,7 @@ const recommendations = [
       employment_type: "Hybrid",
       description:
         "Xây dựng hạ tầng cloud, tự động hóa quy trình triển khai và duy trì độ ổn định của hệ thống trong môi trường sản xuất.",
+      status: "open",
     },
     final_score: 41.53,
     skill_score: 62.5,
@@ -59,9 +61,21 @@ test("candidate recommendations show ranked AI data in a responsive two-column l
     if (message.type() === "error") errors.push(message.text());
   });
   await page.route("**/api/**", async (route) => {
+    const request = route.request();
     const path = new URL(route.request().url()).pathname;
     if (path === "/api/me") return route.fulfill({ json: candidate });
-    if (path === "/api/recommendations") return route.fulfill({ json: recommendations });
+    if (path === "/api/resumes/me") return route.fulfill({ json: [{ id: 5, filename: "devops.pdf", is_active: true }] });
+    if (path === "/api/recommendations/positions") return route.fulfill({ json: { positions: ["DevOps Engineer"] } });
+    if (path === "/api/recommendations/jobs") return route.fulfill({ json: recommendations.map((item) => item.job) });
+    if (path === "/api/recommendations" && request.method() === "POST") {
+      return route.fulfill({ json: {
+        items: recommendations,
+        resume_insights: { tips: [] },
+        analyzed_count: 2,
+        candidate_limit: 20,
+        duration_ms: 24.5,
+      } });
+    }
     if (path === "/api/notifications") return route.fulfill({ json: [] });
     if (path === "/api/notifications/unread-count") return route.fulfill({ json: { count: 0 } });
     if (path === "/api/jobs/102") return route.fulfill({ json: recommendations[1].job });
@@ -73,10 +87,13 @@ test("candidate recommendations show ranked AI data in a responsive two-column l
   await expect(page).toHaveURL(/\/candidate\/recommendations$/);
   await expect(page.getByRole("heading", { level: 1, name: "Gợi ý việc làm bằng AI" })).toBeVisible();
   await expect(
-    page.getByText("Khám phá những công việc phù hợp nhất với CV, kỹ năng và kinh nghiệm của bạn."),
+    page.getByText("Chọn CV và vị trí để AI gợi ý những tin tuyển dụng phù hợp nhất."),
   ).toBeVisible();
+  await expect(page.locator(".recommendation-card")).toHaveCount(0);
+  await page.getByLabel(/Vị trí mong muốn/).selectOption("DevOps Engineer");
+  await page.getByRole("button", { name: "Gợi ý việc làm", exact: true }).click();
   await expect(page.locator(".recommendations-summary")).toContainText("2");
-  await expect(page.locator(".recommendations-summary")).toContainText("Xếp hạng theo mức độ phù hợp");
+  await expect(page.locator(".recommendations-summary")).toContainText("Đã chấm 2 Job");
   await expect(page.locator(".site-nav a")).toHaveCount(6);
   await expect(page.locator('.site-nav a[href="/candidate/recommendations"]')).toHaveAttribute("aria-current", "page");
 
@@ -131,6 +148,8 @@ test("candidate recommendations show ranked AI data in a responsive two-column l
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/candidate/recommendations");
+  await page.getByLabel(/Vị trí mong muốn/).selectOption("DevOps Engineer");
+  await page.getByRole("button", { name: "Gợi ý việc làm", exact: true }).click();
   await expect(cards).toHaveCount(2);
   const mobilePositions = await cards.evaluateAll((items) =>
     items.map((item) => ({ x: item.getBoundingClientRect().x, y: item.getBoundingClientRect().y })),
@@ -150,14 +169,20 @@ test("recommendations preserve loading, empty and error states without fake jobs
   });
 
   await page.route("**/api/**", async (route) => {
+    const request = route.request();
     const path = new URL(route.request().url()).pathname;
     if (path === "/api/me") return route.fulfill({ json: candidate });
     if (path === "/api/notifications") return route.fulfill({ json: [] });
     if (path === "/api/notifications/unread-count") return route.fulfill({ json: { count: 0 } });
-    if (path === "/api/recommendations") {
+    if (path === "/api/resumes/me") return route.fulfill({ json: [{ id: 5, filename: "cv.pdf", is_active: true }] });
+    if (path === "/api/recommendations/positions") return route.fulfill({ json: { positions: ["Data Analyst"] } });
+    if (path === "/api/recommendations/jobs") return route.fulfill({ json: [] });
+    if (path === "/api/recommendations" && request.method() === "POST") {
       if (mode === "loading") {
         await pendingRecommendations;
-        return route.fulfill({ json: [] });
+        return route.fulfill({ json: {
+          items: [], resume_insights: { tips: [] }, analyzed_count: 0, candidate_limit: 20, duration_ms: 2,
+        } });
       }
       return route.fulfill({ status: 503, json: { detail: "Không thể tải gợi ý lúc này." } });
     }
@@ -166,14 +191,18 @@ test("recommendations preserve loading, empty and error states without fake jobs
   await authenticateCandidate(page);
 
   await page.goto("/candidate/recommendations");
-  await expect(page.getByText("Đang tải...", { exact: true })).toBeVisible();
+  await page.getByLabel(/Vị trí mong muốn/).selectOption("Data Analyst");
+  await page.getByRole("button", { name: "Gợi ý việc làm", exact: true }).click();
+  await expect(page.getByText("AI đang phân tích tập Job đã được lọc...", { exact: true })).toBeVisible();
   releaseRecommendations();
-  await expect(page.getByText("Chưa có gợi ý — hãy tải CV lên để nhận đề xuất từ AI.", { exact: true })).toBeVisible();
+  await expect(page.getByText("Không còn tin tuyển dụng đang mở phù hợp với lựa chọn này.", { exact: true })).toBeVisible();
   await expect(page.locator(".recommendation-card")).toHaveCount(0);
   await expect(page.locator(".recommendations-summary")).toContainText("0");
 
   mode = "error";
   await page.reload();
+  await page.getByLabel(/Vị trí mong muốn/).selectOption("Data Analyst");
+  await page.getByRole("button", { name: "Gợi ý việc làm", exact: true }).click();
   await expect(page.getByText("Không thể tải gợi ý lúc này.", { exact: true })).toBeVisible();
   await expect(page.locator(".recommendation-card")).toHaveCount(0);
   await expect(page.locator(".recommendations-summary")).toHaveCount(0);

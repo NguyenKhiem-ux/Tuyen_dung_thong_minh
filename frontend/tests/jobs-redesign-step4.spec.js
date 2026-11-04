@@ -62,7 +62,7 @@ test("jobs redesign keeps real search, filters, sort and responsive states", asy
   expect(consoleErrors).toEqual([]);
 });
 
-test("candidate jobs use backend applications and recommendations", async ({ page, request }, testInfo) => {
+test("candidate jobs use backend applications without running AI automatically", async ({ page, request }, testInfo) => {
   const login = await request.post(`${apiURL}/api/auth/login`, {
     data: { email: "candidate1@demo.ai", password: "Password123" },
   });
@@ -79,17 +79,20 @@ test("candidate jobs use backend applications and recommendations", async ({ pag
   );
 
   const applicationsResponse = page.waitForResponse((response) => response.url().includes("/api/applications/me"));
-  const recommendationsResponse = page.waitForResponse((response) => response.url().includes("/api/recommendations"));
+  const recommendationRequests = [];
+  page.on("request", (request) => {
+    if (request.url().includes("/api/recommendations")) recommendationRequests.push(request.url());
+  });
   await page.goto("/jobs");
   const applications = await (await applicationsResponse).json();
-  const recommendations = await (await recommendationsResponse).json();
   const openJobs = await (await request.get(`${apiURL}/api/jobs`, { params: { status: "open" } })).json();
   const openIds = new Set(openJobs.map((job) => job.id));
 
   await expect(page.getByRole("button", { name: "Đã ứng tuyển" })).toHaveCount(
     applications.filter((application) => openIds.has(application.job_id)).length,
   );
-  await expect(page.locator(".job-match-score")).toHaveCount(recommendations.length);
+  await expect(page.locator(".job-match-score")).toHaveCount(0);
+  expect(recommendationRequests).toEqual([]);
   await expect(page.locator('.site-nav a[href="/jobs"]')).toHaveAttribute("aria-current", "page");
   await page.screenshot({ path: testInfo.outputPath("jobs-candidate-1366.png"), fullPage: true });
 });

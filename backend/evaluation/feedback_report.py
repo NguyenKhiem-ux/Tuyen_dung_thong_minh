@@ -41,10 +41,9 @@ def summarize(rows: list[tuple[str, float]]) -> dict:
 
 def main() -> None:
     from sqlalchemy import select
-    from app.database import Base, SessionLocal, engine
+    from app.database import SessionLocal
     from app.models import AIFeedback
 
-    Base.metadata.create_all(engine)  # CSDL cũ chưa có bảng ai_feedback cho tới khi backend khởi động lại
     with SessionLocal() as db:
         rows = [(f.label, f.score_snapshot) for f in db.scalars(select(AIFeedback))]
     result = summarize(rows)

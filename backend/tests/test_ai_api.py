@@ -6,16 +6,20 @@ from unittest.mock import patch
 
 from docx import Document
 from fastapi import HTTPException, UploadFile
+from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.database import Base
+from app.deps import current_user, require_role
 from app.models import AIFeedback, Application, Job, Resume, User
 from app.routers import (
-    ai_feedback_summary, get_ai_feedback, recommend_jobs, resume_insights, save_ai_feedback, upload_resume,
+    ai_feedback_summary, get_ai_feedback, recommend_jobs, recommendation_jobs, recommendation_positions,
+    resume_insights, save_ai_feedback, upload_resume,
 )
-from app.schemas import AIFeedbackIn
+from app.schemas import AIFeedbackIn, RecommendationRequest
+from app.security import create_access_token
 
 CV = (
     "Le Van An\nGender: Female\nAddress: Ha Noi\n"
@@ -42,7 +46,13 @@ class AIApiTests(unittest.TestCase):
                        recruiter_id=self.recruiter.id)
         self.job2 = Job(title="Frontend Developer", description="React, TypeScript, CSS", skills="react, typescript, css",
                         min_experience=1, status="open", recruiter_id=self.recruiter.id)
-        self.db.add_all([self.job, self.job2])
+        self.job3 = Job(title="Frontend Developer", description="React, accessibility, testing", skills="react, css",
+                        min_experience=2, status="open", recruiter_id=self.recruiter.id)
+        self.backend_job = Job(title="Backend Engineer", description="Python services", skills="python",
+                               min_experience=1, status="open", recruiter_id=self.recruiter.id)
+        self.closed_job = Job(title="Frontend Developer", description="Closed React role", skills="react",
+                              min_experience=1, status="closed", recruiter_id=self.recruiter.id)
+        self.db.add_all([self.job, self.job2, self.job3, self.backend_job, self.closed_job])
         self.db.flush()
         self.resume = Resume(candidate_id=self.candidate.id, filename="cv.docx", raw_text=CV,
                              skills="python, fastapi", experience_years=3)
@@ -70,20 +80,131 @@ class AIApiTests(unittest.TestCase):
 
     # ----- recommendations -----
     def test_recommendations_expose_matched_partial_preferred_and_evidence(self):
-        item = recommend_jobs(5, self.db, User(id=self.candidate.id, role="candidate", full_name="Le Van An",
-                                              email="c@x.ai", hashed_password="t"))
-        # đơn đã nộp vào job 1 nên chỉ còn job 2 trong gợi ý
-        self.assertEqual([i["job"]["id"] for i in item], [self.job2.id])
+        result = recommend_jobs(
+            RecommendationRequest(resume_id=self.resume.id, position="Frontend Developer", mode="position", limit=5),
+            self.db,
+            self.candidate,
+        )
+        item = result["items"]
+        self.assertEqual({i["job"]["id"] for i in item}, {self.job2.id, self.job3.id})
+        self.assertEqual(result["analyzed_count"], 2)
         for key in (
             "skill_score", "experience_score", "semantic_score", "project_score",
-            "matched_skills", "partial_skills", "preferred_skills", "evidence", "missing_skills",
+            "matched_skills", "partial_skills", "preferred_skills", "evidence", "missing_skills", "engine_version",
         ):
             self.assertIn(key, item[0])
 
     def test_candidate_name_is_passed_for_redaction(self):
         with patch("app.routers.recommend_jobs_for_resume", return_value=[]) as mocked:
-            recommend_jobs(5, self.db, self.candidate)
+            recommend_jobs(
+                RecommendationRequest(resume_id=self.resume.id, position="Frontend Developer", mode="position"),
+                self.db,
+                self.candidate,
+            )
         self.assertEqual(mocked.call_args.kwargs["redact_terms"], ["Le Van An"])
+
+    def test_positions_and_jobs_are_filtered_before_ai_scoring(self):
+        self.assertEqual(
+            recommendation_positions(self.db, self.candidate)["positions"],
+            ["Backend Engineer", "Frontend Developer"],
+        )
+        self.assertEqual(
+            {job["id"] for job in recommendation_jobs("Frontend Developer", self.db, self.candidate)},
+            {self.job2.id, self.job3.id},
+        )
+        with patch("app.routers.recommend_jobs_for_resume", return_value=[]) as mocked:
+            recommend_jobs(
+                RecommendationRequest(resume_id=self.resume.id, position="Frontend Developer", mode="position"),
+                self.db,
+                self.candidate,
+            )
+        scored_jobs = mocked.call_args.args[3]
+        self.assertEqual({job.id for job in scored_jobs}, {self.job2.id, self.job3.id})
+        self.assertNotIn(self.backend_job.id, {job.id for job in scored_jobs})
+
+    def test_single_mode_scores_exactly_one_job(self):
+        application_count = self.db.query(Application).count()
+        with patch("app.routers.recommend_jobs_for_resume", return_value=[]) as mocked:
+            result = recommend_jobs(
+                RecommendationRequest(
+                    resume_id=self.resume.id,
+                    position="Frontend Developer",
+                    mode="single",
+                    job_id=self.job2.id,
+                ),
+                self.db,
+                self.candidate,
+            )
+        self.assertEqual(result["analyzed_count"], 1)
+        self.assertEqual([job.id for job in mocked.call_args.args[3]], [self.job2.id])
+        self.assertEqual(self.db.query(Application).count(), application_count)
+
+    def test_position_mode_honors_backend_candidate_limit(self):
+        with patch("app.routers.settings.AI_RECOMMENDATION_CANDIDATE_LIMIT", 1), \
+                patch("app.routers.recommend_jobs_for_resume", return_value=[]) as mocked:
+            result = recommend_jobs(
+                RecommendationRequest(resume_id=self.resume.id, position="Frontend Developer", mode="position"),
+                self.db,
+                self.candidate,
+            )
+        self.assertEqual(result["analyzed_count"], 1)
+        self.assertEqual(len(mocked.call_args.args[3]), 1)
+
+    def test_recommendations_reject_foreign_resume_and_closed_or_mismatched_job(self):
+        foreign_resume = Resume(candidate_id=self.recruiter.id, filename="foreign.pdf", raw_text=CV,
+                                skills="python", experience_years=3)
+        self.db.add(foreign_resume)
+        self.db.commit()
+        with self.assertRaises(HTTPException) as foreign:
+            recommend_jobs(
+                RecommendationRequest(resume_id=foreign_resume.id, position="Frontend Developer", mode="position"),
+                self.db,
+                self.candidate,
+            )
+        self.assertEqual(foreign.exception.status_code, 404)
+        for job, position in ((self.closed_job, "Frontend Developer"), (self.job2, "Backend Engineer")):
+            with self.assertRaises(HTTPException) as missing:
+                recommend_jobs(
+                    RecommendationRequest(
+                        resume_id=self.resume.id, position=position, mode="single", job_id=job.id,
+                    ),
+                    self.db,
+                    self.candidate,
+                )
+            self.assertEqual(missing.exception.status_code, 404)
+        with self.assertRaises(HTTPException) as missing:
+            recommend_jobs(
+                RecommendationRequest(
+                    resume_id=self.resume.id, position="Frontend Developer", mode="single", job_id=999_999,
+                ),
+                self.db,
+                self.candidate,
+            )
+        self.assertEqual(missing.exception.status_code, 404)
+
+    def test_recommendations_require_a_candidate_jwt_role(self):
+        token = create_access_token({"sub": str(self.candidate.id)})
+        credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
+        authenticated = current_user(credentials, self.db)
+        self.assertEqual(authenticated.id, self.candidate.id)
+        self.assertEqual(require_role("candidate")(authenticated).id, self.candidate.id)
+        with self.assertRaises(HTTPException) as forbidden:
+            require_role("candidate")(self.recruiter)
+        self.assertEqual(forbidden.exception.status_code, 403)
+
+    def test_recommendations_use_current_cv_and_job_content_without_stale_cache(self):
+        data = RecommendationRequest(
+            resume_id=self.resume.id, position="Frontend Developer", mode="single", job_id=self.job2.id,
+        )
+        with patch("app.routers.recommend_jobs_for_resume", return_value=[]) as mocked:
+            recommend_jobs(data, self.db, self.candidate)
+            self.resume.raw_text = "Updated CV with React"
+            self.job2.description = "Updated React job description"
+            self.db.commit()
+            recommend_jobs(data, self.db, self.candidate)
+        self.assertEqual(mocked.call_count, 2)
+        self.assertEqual(mocked.call_args.args[0], "Updated CV with React")
+        self.assertEqual(mocked.call_args.args[3][0].description, "Updated React job description")
 
     # ----- upload -----
     def _upload(self, paragraphs):

@@ -2,6 +2,25 @@ import { test, expect } from "@playwright/test";
 
 const apiURL = process.env.TEST_API_URL || "http://127.0.0.1:8000";
 
+const visualJobs = Array.from({ length: 8 }, (_, index) => ({
+  id: index + 1,
+  company_id: (index % 4) + 1,
+  company_name: ["Công ty Công nghệ Sao Việt", "Green Future", "Dữ liệu Việt", "Creative Lab"][index % 4],
+  title:
+    index === 0
+      ? "Senior Frontend Developer React và hệ thống thiết kế sản phẩm số"
+      : ["Backend Engineer", "Data Analyst", "AI Engineer", "Product Designer"][index % 4],
+  location: ["Hà Nội", "TP. Hồ Chí Minh", "Remote", "Đà Nẵng"][index % 4],
+  employment_type: ["full-time", "contract", "internship", "part-time"][index % 4],
+  salary_range: index % 2 ? "20 - 30 triệu" : "25 - 40 triệu",
+  skills: ["React, TypeScript, CSS, Design System", "Python, FastAPI, PostgreSQL", "SQL, Power BI", "Figma, UX Research"][
+    index % 4
+  ],
+  applicants_count: 12 + index * 3,
+  status: "open",
+  created_at: new Date(Date.UTC(2026, 9, 27 - index)).toISOString(),
+}));
+
 async function login(page, role = "candidate") {
   await page.goto("/login");
   const email = role === "admin" ? "admin@smartrecruit.ai" : `${role}1@demo.ai`;
@@ -318,7 +337,7 @@ test("loading, empty and failed jobs do not hide the Home", async ({ page }) => 
     await route.fulfill({ json: [] });
   });
   await page.goto("/");
-  await expect(page.locator(".job-skeleton")).toHaveCount(11);
+  await expect(page.locator(".job-skeleton")).toHaveCount(9);
   release();
   await expect(page.getByText("Hiện chưa có việc làm phù hợp.")).toHaveCount(2);
   await page.unroute("**/api/jobs?*");
@@ -328,13 +347,16 @@ test("loading, empty and failed jobs do not hide the Home", async ({ page }) => 
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
   await expect(page.locator("#smart-ai")).toBeVisible();
   await page.unroute("**/api/jobs?*");
+  await page.route("**/api/jobs?*", (route) => route.fulfill({ json: visualJobs }));
   await page.getByRole("button", { name: "Thử lại", exact: true }).first().click();
   await expect(page.getByText("Không thể tải danh sách việc làm lúc này.")).toHaveCount(0);
+  await expect(page.locator(".home-job-grid").first().locator("article")).toHaveCount(6);
 });
 
 test("desktop, tablet and mobile layouts, image and mobile navigation", async ({ page }, testInfo) => {
+  await page.route("**/api/jobs?*", (route) => route.fulfill({ json: visualJobs }));
   for (const [width, height] of [
-    [1920, 1080],
+    [1440, 900],
     [1366, 768],
     [1024, 768],
     [768, 1024],
@@ -346,7 +368,51 @@ test("desktop, tablet and mobile layouts, image and mobile navigation", async ({
     await expect(page.locator(".job-skeleton")).toHaveCount(0);
     await expect(page.locator(".home-hero-art")).toBeVisible();
     expect(await page.locator(".home-hero-art").evaluate((img) => img.complete && img.naturalWidth > 0)).toBeTruthy();
+    await expect(page.locator(".home-job-grid").first().locator("article")).toHaveCount(6);
+    await expect(page.locator(".home-job-grid").nth(1).locator("article")).toHaveCount(3);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+    const layout = await page.evaluate(() => {
+      const px = (selector) => parseFloat(getComputedStyle(document.querySelector(selector)).fontSize);
+      const firstGrid = document.querySelector(".home-job-grid");
+      const cards = [...firstGrid.querySelectorAll("article")];
+      const allCards = [...document.querySelectorAll(".home-job-grid article")];
+      const columns = new Set(cards.slice(0, 3).map((card) => Math.round(card.getBoundingClientRect().left))).size;
+      const firstRowHeights = cards.slice(0, columns).map((card) => card.getBoundingClientRect().height);
+      return {
+        body: px(".home-page"),
+        hero: px(".home-hero h1"),
+        section: px(".home-section-heading h2"),
+        jobTitle: px(".home-job-heading h3"),
+        company: px(".home-job-heading p"),
+        badge: px(".job-badge"),
+        detail: px(".home-job-detail-link"),
+        search: px(".home-search input"),
+        button: px(".home-button"),
+        statLabel: px(".home-stat > div > span"),
+        aiBody: px(".home-ai-copy > p:not(.home-eyebrow)"),
+        aiFeature: px(".home-ai-features p"),
+        categoryMeta: px(".home-category-copy small"),
+        columns,
+        rowHeightDifference: Math.max(...firstRowHeights) - Math.min(...firstRowHeights),
+        cardsOverflow: allCards.some((card) => card.scrollWidth > card.clientWidth + 1),
+      };
+    });
+    expect(layout.body).toBeGreaterThanOrEqual(16);
+    expect(layout.hero).toBeGreaterThanOrEqual(width >= 768 ? 40 : 30);
+    expect(layout.section).toBeGreaterThanOrEqual(26);
+    expect(layout.jobTitle).toBeGreaterThanOrEqual(17);
+    expect(layout.company).toBeGreaterThanOrEqual(14);
+    expect(layout.badge).toBeGreaterThanOrEqual(12);
+    expect(layout.detail).toBeGreaterThanOrEqual(15);
+    expect(layout.search).toBeGreaterThanOrEqual(width < 768 ? 16 : 15);
+    expect(layout.button).toBeGreaterThanOrEqual(15);
+    expect(layout.statLabel).toBeGreaterThanOrEqual(14);
+    expect(layout.aiBody).toBeGreaterThanOrEqual(16);
+    expect(layout.aiFeature).toBeGreaterThanOrEqual(14);
+    expect(layout.categoryMeta).toBeGreaterThanOrEqual(14);
+    expect(layout.columns).toBe(width >= 1200 ? 3 : width >= 768 ? 2 : 1);
+    expect(layout.rowHeightDifference).toBeLessThanOrEqual(1);
+    expect(layout.cardsOverflow).toBeFalsy();
     const overlaps = await page.evaluate(() => {
       const headline = document.querySelector(".home-hero h1").getBoundingClientRect();
       const search = document.querySelector(".home-search").getBoundingClientRect();
@@ -354,9 +420,27 @@ test("desktop, tablet and mobile layouts, image and mobile navigation", async ({
     });
     expect(overlaps).toBeFalsy();
     await page.screenshot({ path: testInfo.outputPath(`home-${width}.png`), fullPage: true });
+    if (width === 390) {
+      await page.locator(".home-ai-band").screenshot({ path: testInfo.outputPath("home-ai-390.png") });
+    }
+    if (width === 1440) {
+      await page.getByRole("textbox", { name: "Từ khóa việc làm" }).fill("React");
+      await page.getByLabel("Địa điểm", { exact: true }).fill("Remote");
+      await page.getByRole("button", { name: "Tìm kiếm", exact: true }).click();
+      await expect(page).toHaveURL(/q=React&location=Remote/);
+    }
     if (width < 1200) {
-      await page.getByRole("button", { name: "Mở menu", exact: true }).click();
+      const menuButton = page.getByRole("button", { name: "Mở menu", exact: true });
+      if (width === 390) {
+        await menuButton.focus();
+        await page.keyboard.press("Enter");
+      } else {
+        await menuButton.click();
+      }
       await expect(page.locator(".site-nav")).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(page.locator(".site-nav")).not.toBeVisible();
+      await page.getByRole("button", { name: "Mở menu", exact: true }).click();
       await page.locator(".site-nav").getByRole("link", { name: "Tìm việc", exact: true }).click();
       await expect(page).toHaveURL(/\/jobs$/);
       await expect(page.locator(".site-nav")).not.toBeVisible();

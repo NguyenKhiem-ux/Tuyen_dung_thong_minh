@@ -19,12 +19,16 @@ async function signIn(page, user) {
 test("candidate sees CV quality tips and evidence behind AI recommendations", async ({ page }) => {
   const candidate = { id: 2, email: "c@example.com", full_name: "Le Van An", role: "candidate" };
   const errors = watchConsole(page);
+  let analyzeCalls = 0;
+  let analyzePayload = null;
+  let applied = false;
   await signIn(page, candidate);
   await page.route("**/api/**", async (route) => {
+    const request = route.request();
     const path = new URL(route.request().url()).pathname;
     if (path === "/api/me") return route.fulfill({ json: candidate });
     if (path === "/api/resumes/me") {
-      return route.fulfill({ json: [{ id: 5, filename: "cv.pdf", skills: ["python", "docker"], experience_years: 3, education: [], projects: [], summary: "ok", created_at: "2026-10-01T03:00:00Z" }] });
+      return route.fulfill({ json: [{ id: 5, filename: "cv.pdf", skills: ["python", "docker"], experience_years: 3, education: [], projects: [], summary: "ok", is_active: true, created_at: "2026-10-01T03:00:00Z" }] });
     }
     if (path === "/api/resumes/me/insights") {
       return route.fulfill({ json: { quality_score: 58, skills: ["python"], experience_years: 3, engine_version: "3.0", tips: [
@@ -32,14 +36,28 @@ test("candidate sees CV quality tips and evidence behind AI recommendations", as
         { code: "no_metrics", severity: "medium", message: "Chưa có con số thể hiện thành tích." },
       ] } });
     }
-    if (path === "/api/recommendations") {
-      return route.fulfill({ json: [{
-        job: { id: 7, title: "Backend Developer", company_name: "ACME", location: "Remote", description: "API", skills: "python", employment_type: "Full-time" },
-        final_score: 71.5, skill_score: 80, missing_skills: ["kubernetes"], preferred_skills: ["kubernetes"],
+    if (path === "/api/recommendations/positions") {
+      return route.fulfill({ json: { positions: ["Backend Developer", "Frontend Developer"] } });
+    }
+    if (path === "/api/recommendations" && request.method() === "POST") {
+      analyzeCalls += 1;
+      analyzePayload = request.postDataJSON();
+      return route.fulfill({ json: {
+        items: [{
+        job: { id: 7, title: "Backend Developer", company_name: "ACME", location: "Remote", description: "API", skills: "python", employment_type: "Full-time", status: "open" },
+        final_score: 71.5, skill_score: 80, experience_score: 72, semantic_score: 68, project_score: 66,
+        missing_skills: ["kubernetes"], preferred_skills: ["kubernetes"],
         matched_skills: ["python"], partial_skills: ["vue (tương đương react)"],
         evidence: { python: "…3 years of experience with Python, FastAPI…" },
         explanation: "Phù hợp 71.5%.",
-      }] });
+        engine_version: "3.0",
+      }], resume_insights: { tips: [{ code: "no_metrics", message: "Bổ sung số liệu thành tích." }] },
+      analyzed_count: 1, candidate_limit: 1, duration_ms: 12.4,
+      } });
+    }
+    if (path === "/api/jobs/7/apply" && request.method() === "POST") {
+      applied = true;
+      return route.fulfill({ json: { match: { final_score: 71.5 } } });
     }
     return route.fulfill({ json: [] });
   });
@@ -50,11 +68,27 @@ test("candidate sees CV quality tips and evidence behind AI recommendations", as
   await expect(page.locator(".tip-severity.high")).toHaveText("Quan trọng");
 
   await page.goto("/candidate/recommendations");
+  const analyzeButton = page.getByRole("button", { name: "Gợi ý việc làm", exact: true });
+  await expect(analyzeButton).toBeDisabled();
+  expect(analyzeCalls).toBe(0);
+  await page.getByLabel(/Vị trí mong muốn/).selectOption("Backend Developer");
+  expect(analyzeCalls).toBe(0);
+  await expect(analyzeButton).toBeEnabled();
+  await analyzeButton.click();
+  expect(analyzeCalls).toBe(1);
+  expect(analyzePayload).toEqual({
+    resume_id: 5, position: "Backend Developer", mode: "position", limit: 6,
+  });
   await expect(page.locator(".matched-skills")).toContainText("python");
   await expect(page.locator(".partial-skills")).toContainText("vue (tương đương react)");
   await expect(page.locator(".missing-skills")).toContainText("kubernetes (ưu tiên)");
   await page.locator(".ai-evidence summary").click();
   await expect(page.locator(".ai-evidence")).toContainText("3 years of experience with Python");
+  await expect(page.locator(".recommendation-improvements")).toContainText("Bổ sung số liệu thành tích");
+  const card = page.getByTestId("recommendation-card-7");
+  await card.getByRole("button", { name: "Ứng tuyển", exact: true }).click();
+  expect(applied).toBeTruthy();
+  await expect(card.getByRole("button", { name: "Đã ứng tuyển", exact: true })).toBeDisabled();
   expect(errors).toEqual([]);
 });
 

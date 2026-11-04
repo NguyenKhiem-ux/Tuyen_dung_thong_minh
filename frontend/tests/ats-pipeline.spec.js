@@ -113,7 +113,7 @@ test("recruiter moves candidates through the ATS pipeline and sees history", asy
   await page.getByRole("button", { name: "Chuyển sang Sàng lọc" }).click();
   await expect(page.getByRole("dialog")).toContainText("Đã ứng tuyển");
   await page.getByLabel("Ghi chú nội bộ (không bắt buộc)").fill("Điểm nội bộ: ưu tiên cao");
-  await page.getByLabel("Ghi chú gửi ứng viên (không bắt buộc)").fill("Hồ sơ của bạn phù hợp với vị trí.");
+  await page.getByLabel("Lời nhắn cho ứng viên (không bắt buộc)").fill("Hồ sơ của bạn phù hợp với vị trí.");
   await page.getByRole("button", { name: "Xác nhận" }).click();
   await expect(page.locator(".ats-column-screening")).toContainText("Nguyễn Văn A");
   await expect(page.locator(".ats-column-applied .ats-candidate-card")).toHaveCount(0);
@@ -133,7 +133,7 @@ test("recruiter moves candidates through the ATS pipeline and sees history", asy
   await page.getByLabel("Phương án 1").fill("2030-10-20T09:00");
   await page.getByLabel("Phương án 2").fill("2030-10-21T14:00");
   await page.getByLabel("Phương án 3").fill("2030-10-22T10:30");
-  await page.getByLabel("Ghi chú gửi ứng viên (không bắt buộc)").fill("Vui lòng chọn một lịch phỏng vấn phù hợp.");
+  await page.getByLabel("Lời nhắn cho ứng viên (không bắt buộc)").fill("Vui lòng chọn một lịch phỏng vấn phù hợp.");
   await page.getByRole("button", { name: "Gửi đề xuất" }).click();
   await expect(page.locator(".ats-column-interview")).toContainText("Nguyễn Văn A");
 

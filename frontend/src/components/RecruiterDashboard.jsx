@@ -876,7 +876,7 @@ function TransitionModal({ application, status, busy, error, onClose, onConfirm 
           onChange={(e) => setReason(e.target.value)}
           placeholder={rejected ? "Nhập lý do từ chối ứng viên" : "Chỉ nhà tuyển dụng nhìn thấy nội dung này"}
         />
-        <label htmlFor="transition-candidate-message">Ghi chú gửi ứng viên (không bắt buộc)</label>
+        <label htmlFor="transition-candidate-message">Lời nhắn cho ứng viên (không bắt buộc)</label>
         <textarea
           id="transition-candidate-message"
           rows={4}
@@ -884,7 +884,7 @@ function TransitionModal({ application, status, busy, error, onClose, onConfirm 
           onChange={(event) => setCandidateMessage(event.target.value)}
           placeholder="Nhập lời nhắn dành cho ứng viên"
         />
-        <small className="ats-field-help">Nội dung này sẽ được gửi cho ứng viên và hiển thị trong lịch sử ứng tuyển.</small>
+        <small className="ats-field-help">Ứng viên sẽ nhìn thấy nội dung này trong lịch sử ứng tuyển; ghi chú nội bộ ở trên được giữ riêng.</small>
         <div className="ats-modal-actions">
           <button className="btn-ghost" type="button" onClick={onClose} disabled={busy}>Hủy</button>
           <button className={rejected ? "btn-danger" : "btn-primary"} disabled={busy || (rejected && !reason.trim())}>
@@ -984,10 +984,10 @@ function InterviewProposalModal({ application, busy, error, onClose, onConfirm }
           <textarea rows={3} value={notes} onChange={(event) => setNotes(event.target.value)} />
         </label>
         <label>
-          Ghi chú gửi ứng viên (không bắt buộc)
+          Lời nhắn cho ứng viên (không bắt buộc)
           <textarea rows={3} value={candidateMessage} onChange={(event) => setCandidateMessage(event.target.value)} />
         </label>
-        <small className="ats-field-help">Nội dung này sẽ được gửi cho ứng viên và hiển thị trong lịch sử ứng tuyển.</small>
+        <small className="ats-field-help">Ứng viên sẽ nhìn thấy nội dung này trong lịch sử ứng tuyển; ghi chú nội bộ ở trên được giữ riêng.</small>
         <div className="ats-modal-actions">
           <button className="btn-ghost" type="button" onClick={onClose} disabled={busy}>Hủy</button>
           <button className="btn-primary" disabled={busy}>
@@ -1194,7 +1194,7 @@ function ApplicationMessageForm({ applicationId, onDone }) {
   return (
     <form className="inline-form" onSubmit={submit}>
       <Alert>{error}</Alert>
-      <label htmlFor={`candidate-message-${applicationId}`}>Ghi chú gửi ứng viên</label>
+      <label htmlFor={`candidate-message-${applicationId}`}>Lời nhắn cho ứng viên</label>
       <textarea
         id={`candidate-message-${applicationId}`}
         rows={4}
